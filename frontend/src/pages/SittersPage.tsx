@@ -24,9 +24,10 @@ export default function SittersPage() {
         minRate: filters.minRate ? parseFloat(filters.minRate) : undefined,
         maxRate: filters.maxRate ? parseFloat(filters.maxRate) : undefined,
       });
+      console.log('Sitters loaded:', data);
       setSitters(data);
     } catch (err) {
-      console.error('Nepavyko užkrauti priežiūrėtojų');
+      console.error('Nepavyko užkrauti priežiūrėtojų:', err);
     } finally {
       setLoading(false);
     }
