@@ -1,0 +1,310 @@
+// Pet-Sitting Platform Database Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// USERS & AUTH
+// ============================================
+
+model User {
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  passwordHash        String
+  name                String
+  phone               String?
+  role                UserRole  @default(OWNER)
+  avatar              String?
+  isBlocked           Boolean   @default(false)
+  isEmailVerified     Boolean   @default(false)
+  emailVerifyToken    String?   @unique
+  passwordResetToken  String?   @unique
+  passwordResetExp    DateTime?
+  lastLoginAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Relations
+  pets                Pet[]
+  sitterProfile       SitterProfile?
+  ownedVisits         Visit[]        @relation("OwnerVisits")
+  sitterVisits        Visit[]        @relation("SitterUserVisits")
+  sentMessages        Message[]      @relation("SentMessages")
+  chatsAsUser1        Chat[]         @relation("User1")
+  chatsAsUser2        Chat[]         @relation("User2")
+  reviewsGiven        Review[]       @relation("ReviewAuthor")
+  reviewsReceived     Review[]       @relation("SitterUserReviews")
+  notifications       Notification[]
+  transactions        Transaction[]
+
+  @@index([email])
+  @@index([role])
+}
+
+enum UserRole {
+  OWNER
+  SITTER
+  BOTH
+  ADMIN
+}
+
+// ============================================
+// PETS
+// ============================================
+
+model Pet {
+  id            String   @id @default(uuid())
+  ownerId       String
+  name          String
+  type          PetType
+  breed         String?
+  age           Int?
+  photo         String?
+  notes         String?
+  medicalNotes  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  visits        Visit[]
+
+  @@index([ownerId])
+}
+
+enum PetType {
+  DOG
+  CAT
+  BIRD
+  RABBIT
+  OTHER
+}
+
+// ============================================
+// SITTERS
+// ============================================
+
+model SitterProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  bio             String?
+  city            String
+  address         String?
+  latitude        Float?
+  longitude       Float?
+  hourlyRate      Decimal  @db.Decimal(10, 2)
+  services        String[] // ["DOG_WALKING", "PET_SITTING", "HOME_VISITS"]
+  photos          String[] // array of URLs
+  availability    Json?    // { "monday": { "start": "09:00", "end": "18:00" }, ... }
+  maxPets         Int      @default(1)
+  experienceYears Int?
+  isVerified      Boolean  @default(false)
+  avgRating       Float    @default(0)
+  totalReviews    Int      @default(0)
+  responseTime    Int?     // average minutes
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  visits          Visit[]
+  reviews         Review[]
+
+  @@index([city])
+  @@index([isVerified])
+  @@index([avgRating])
+}
+
+// ============================================
+// VISITS/BOOKINGS
+// ============================================
+
+model Visit {
+  id              String      @id @default(uuid())
+  ownerId         String
+  sitterId        String
+  sitterUserId    String      // Direct link to User for sitterVisits relation
+  petId           String
+  address         String
+  date            DateTime
+  timeStart       String      // "09:00"
+  timeEnd         String      // "17:00"
+  status          VisitStatus @default(PENDING)
+  notesForSitter  String?
+  totalPrice      Decimal     @db.Decimal(10, 2)
+  paidAt          DateTime?
+  canceledBy      String?
+  cancelReason    String?
+  completedAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  owner           User          @relation("OwnerVisits", fields: [ownerId], references: [id], onDelete: Cascade)
+  sitter          SitterProfile @relation(fields: [sitterId], references: [id], onDelete: Cascade)
+  sitterUser      User          @relation("SitterUserVisits", fields: [sitterUserId], references: [id], onDelete: Cascade)
+  pet             Pet           @relation(fields: [petId], references: [id], onDelete: Cascade)
+  photos          VisitPhoto[]
+  reviews         Review[]
+  transactions    Transaction[]
+
+  @@index([ownerId])
+  @@index([sitterId])
+  @@index([sitterUserId])
+  @@index([status])
+  @@index([date])
+}
+
+enum VisitStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  PAID
+  CANCELED
+  COMPLETED
+}
+
+model VisitPhoto {
+  id        String   @id @default(uuid())
+  visitId   String
+  url       String
+  caption   String?
+  createdAt DateTime @default(now())
+
+  visit     Visit    @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  @@index([visitId])
+}
+
+// ============================================
+// CHAT & MESSAGES
+// ============================================
+
+model Chat {
+  id            String    @id @default(uuid())
+  user1Id       String
+  user2Id       String
+  lastMessageAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user1         User      @relation("User1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2         User      @relation("User2", fields: [user2Id], references: [id], onDelete: Cascade)
+  messages      Message[]
+
+  @@unique([user1Id, user2Id])
+  @@index([user1Id])
+  @@index([user2Id])
+}
+
+model Message {
+  id            String    @id @default(uuid())
+  chatId        String
+  senderId      String
+  text          String?
+  attachmentUrl String?
+  isRead        Boolean   @default(false)
+  readAt        DateTime?
+  editedAt      DateTime?
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  chat          Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender        User      @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([chatId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+// ============================================
+// REVIEWS
+// ============================================
+
+model Review {
+  id           String    @id @default(uuid())
+  authorId     String
+  sitterId     String
+  sitterUserId String    // Direct link to User for reviewsReceived relation
+  visitId      String    @unique
+  rating       Int       // 1-5
+  comment      String?
+  response     String?
+  respondedAt  DateTime?
+  isHidden     Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  author       User          @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  sitter       SitterProfile @relation(fields: [sitterId], references: [id], onDelete: Cascade)
+  sitterUser   User          @relation("SitterUserReviews", fields: [sitterUserId], references: [id], onDelete: Cascade)
+  visit        Visit         @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  @@index([sitterId])
+  @@index([sitterUserId])
+  @@index([authorId])
+  @@index([rating])
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id              String           @id @default(uuid())
+  userId          String
+  type            NotificationType
+  title           String
+  body            String
+  isRead          Boolean          @default(false)
+  relatedEntityId String?
+  createdAt       DateTime         @default(now())
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  BOOKING_REQUEST
+  BOOKING_ACCEPTED
+  BOOKING_REJECTED
+  BOOKING_CANCELED
+  BOOKING_COMPLETED
+  MESSAGE
+  REVIEW
+  PAYMENT
+}
+
+// ============================================
+// PAYMENTS
+// ============================================
+
+model Transaction {
+  id                String            @id @default(uuid())
+  visitId           String
+  userId            String
+  amount            Decimal           @db.Decimal(10, 2)
+  status            TransactionStatus @default(PENDING)
+  stripePaymentId   String?           @unique
+  stripeRefundId    String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  visit             Visit             @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([visitId])
+  @@index([userId])
+  @@index([status])
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
