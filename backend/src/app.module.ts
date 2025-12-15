@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { PetModule } from './modules/pet/pet.module';
+import { SitterProfileModule } from './modules/sitter-profile/sitter-profile.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { PetModule } from './modules/pet/pet.module';
     DatabaseModule,
     AuthModule,
     PetModule,
+    SitterProfileModule,
   ],
   controllers: [AppController],
   providers: [AppService],
