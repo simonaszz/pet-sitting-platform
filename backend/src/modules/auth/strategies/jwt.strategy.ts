@@ -35,11 +35,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
 
     if (!user) {
-      throw new UnauthorizedException('User not found');
+      throw new UnauthorizedException('Vartotojas nerastas');
     }
 
     if (user.isBlocked) {
-      throw new UnauthorizedException('User is blocked');
+      throw new UnauthorizedException('Vartotojas užblokuotas');
     }
 
     return user;

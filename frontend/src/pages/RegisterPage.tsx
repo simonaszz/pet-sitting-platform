@@ -27,7 +27,7 @@ export default function RegisterPage() {
       await authService.register(formData);
       navigate('/');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Registration failed');
+      setError(err.response?.data?.message || 'Registracija nepavyko');
     } finally {
       setLoading(false);
     }
@@ -48,10 +48,10 @@ export default function RegisterPage() {
               </div>
             </div>
             <h2 className="text-3xl font-extrabold text-gray-900 mb-2">
-              Join Us! 🐾
+              Prisijunkite! 🐾
             </h2>
             <p className="text-gray-600">
-              Create your Pet Sitting account
+              Sukurkite savo paskyrą
             </p>
           </div>
 
@@ -74,7 +74,7 @@ export default function RegisterPage() {
 
             {/* Name */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Vardas Pavardė</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -86,7 +86,7 @@ export default function RegisterPage() {
                   type="text"
                   required
                   className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition duration-200 text-gray-900 placeholder-gray-400"
-                  placeholder="John Doe"
+                  placeholder="Jonas Jonaitis"
                   value={formData.name}
                   onChange={handleChange}
                 />
@@ -95,7 +95,7 @@ export default function RegisterPage() {
 
             {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">El. paštas</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -107,7 +107,7 @@ export default function RegisterPage() {
                   type="email"
                   required
                   className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition duration-200 text-gray-900 placeholder-gray-400"
-                  placeholder="you@example.com"
+                  placeholder="jusu@pastas.lt"
                   value={formData.email}
                   onChange={handleChange}
                 />
@@ -116,7 +116,7 @@ export default function RegisterPage() {
 
             {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Slaptažodis</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -128,7 +128,7 @@ export default function RegisterPage() {
                   type="password"
                   required
                   className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition duration-200 text-gray-900 placeholder-gray-400"
-                  placeholder="Min 8 characters"
+                  placeholder="Minimum 8 simboliai"
                   value={formData.password}
                   onChange={handleChange}
                 />
@@ -137,7 +137,7 @@ export default function RegisterPage() {
 
             {/* Phone */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Phone (Optional)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Telefono numeris (nebūtinas)</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -148,7 +148,7 @@ export default function RegisterPage() {
                   name="phone"
                   type="tel"
                   className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition duration-200 text-gray-900 placeholder-gray-400"
-                  placeholder="+1 (555) 000-0000"
+                  placeholder="+370 600 00000"
                   value={formData.phone}
                   onChange={handleChange}
                 />
@@ -157,7 +157,7 @@ export default function RegisterPage() {
 
             {/* Role */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">I am a...</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Aš esu...</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -170,9 +170,9 @@ export default function RegisterPage() {
                   onChange={handleChange}
                   className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition duration-200 text-gray-900 appearance-none cursor-pointer"
                 >
-                  <option value="OWNER">🏠 Pet Owner</option>
-                  <option value="SITTER">🐕 Pet Sitter</option>
-                  <option value="BOTH">🤝 Both</option>
+                  <option value="OWNER">🏠 Augintinio savininkas</option>
+                  <option value="SITTER">🐕 Augintinio priežiūrėtojas</option>
+                  <option value="BOTH">🤝 Abu</option>
                 </select>
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                   <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -194,11 +194,11 @@ export default function RegisterPage() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Creating account...
+                  Kuriama paskyra...
                 </>
               ) : (
                 <>
-                  Create Account
+                  Sukurti paskyrą
                   <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                   </svg>
@@ -209,9 +209,9 @@ export default function RegisterPage() {
             {/* Login Link */}
             <div className="text-center pt-4">
               <p className="text-sm text-gray-600">
-                Already have an account?{' '}
+                Jau turite paskyrą?{' '}
                 <Link to="/login" className="font-semibold text-purple-600 hover:text-purple-500 transition duration-200">
-                  Sign in here
+                  Prisijunkite čia
                 </Link>
               </p>
             </div>
@@ -220,7 +220,7 @@ export default function RegisterPage() {
 
         {/* Footer */}
         <p className="mt-8 text-center text-sm text-gray-600">
-          Join thousands of happy pet owners & sitters 🐕🐈
+          Prisijunkite prie tūkstančių laimingų augintinių savininkų ir prižiūrėtojų 🐕🐈
         </p>
       </div>
     </div>

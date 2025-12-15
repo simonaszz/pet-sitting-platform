@@ -18,7 +18,7 @@ export default function LoginPage() {
       await authService.login({ email, password });
       navigate('/');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Invalid credentials');
+      setError(err.response?.data?.message || 'Neteisingi prisijungimo duomenys');
     } finally {
       setLoading(false);
     }
@@ -39,10 +39,10 @@ export default function LoginPage() {
               </div>
             </div>
             <h2 className="text-3xl font-extrabold text-gray-900 mb-2">
-              Welcome Back! 🐾
+              Sveiki sugrįžę! 🐾
             </h2>
             <p className="text-gray-600">
-              Sign in to Pet Sitting Platform
+              Prisijunkite prie Augintinių priežiūros platformos
             </p>
           </div>
 
@@ -67,7 +67,7 @@ export default function LoginPage() {
               {/* Email Input */}
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                  Email Address
+                  El. paštas
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -81,7 +81,7 @@ export default function LoginPage() {
                     type="email"
                     required
                     className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition duration-200 text-gray-900 placeholder-gray-400"
-                    placeholder="you@example.com"
+                    placeholder="jusu@pastas.lt"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                   />
@@ -91,7 +91,7 @@ export default function LoginPage() {
               {/* Password Input */}
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                  Password
+                  Slaptažodis
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -105,7 +105,7 @@ export default function LoginPage() {
                     type="password"
                     required
                     className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition duration-200 text-gray-900 placeholder-gray-400"
-                    placeholder="••••••••"
+                    placeholder="Įveskite slaptažodį"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
@@ -125,11 +125,11 @@ export default function LoginPage() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Signing in...
+                  Jungiamasi...
                 </>
               ) : (
                 <>
-                  Sign in
+                  Prisijungti
                   <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                   </svg>
@@ -140,12 +140,12 @@ export default function LoginPage() {
             {/* Register Link */}
             <div className="text-center">
               <p className="text-sm text-gray-600">
-                Don't have an account?{' '}
+                Neturite paskyros?{' '}
                 <Link
                   to="/register"
                   className="font-semibold text-indigo-600 hover:text-indigo-500 transition duration-200"
                 >
-                  Sign up here
+                  Registruokitės čia
                 </Link>
               </p>
             </div>
@@ -154,7 +154,7 @@ export default function LoginPage() {
 
         {/* Footer */}
         <p className="mt-8 text-center text-sm text-gray-600">
-          Secure authentication powered by JWT 🔒
+          Saugi autentifikacija su JWT 🔒
         </p>
       </div>
     </div>

@@ -22,7 +22,7 @@ export class AuthService {
     });
 
     if (existingUser) {
-      throw new ConflictException('Email already exists');
+      throw new ConflictException('Toks el. paštas jau užregistruotas');
     }
 
     // 2. Hash'inti password
@@ -62,14 +62,14 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Neteisingi prisijungimo duomenys');
     }
 
     // 2. Patikrinti password
     const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
 
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Neteisingi prisijungimo duomenys');
     }
 
     // 3. Sugeneruoti tokens
