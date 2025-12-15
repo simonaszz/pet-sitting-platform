@@ -122,13 +122,14 @@ function BookingCard({ booking, onCancel }: { booking: Visit; onCancel: (id: str
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
             <h3 className="text-xl font-bold text-gray-900">
-              {booking.sitterProfile?.user?.name || 'Priežiūrėtojas'}
+              {booking.sitter?.user?.name || 'Priežiūrėtojas'}
             </h3>
             <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(booking.status)}`}>
               {getStatusLabel(booking.status)}
             </span>
           </div>
           <p className="text-gray-600">🐾 Augintinys: {booking.pet?.name || 'Nežinomas'}</p>
+          <p className="text-gray-600">📍 Adresas: {booking.address}</p>
         </div>
         {canCancel && (
           <button
@@ -140,28 +141,32 @@ function BookingCard({ booking, onCancel }: { booking: Visit; onCancel: (id: str
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 text-sm">
+      <div className="grid grid-cols-3 gap-4 text-sm">
         <div>
-          <p className="text-gray-500">Pradžia:</p>
-          <p className="font-semibold">{formatDate(booking.startDate)}</p>
+          <p className="text-gray-500">Data:</p>
+          <p className="font-semibold">{formatDate(booking.date)}</p>
         </div>
         <div>
-          <p className="text-gray-500">Pabaiga:</p>
-          <p className="font-semibold">{formatDate(booking.endDate)}</p>
+          <p className="text-gray-500">Laikas:</p>
+          <p className="font-semibold">{booking.timeStart} - {booking.timeEnd}</p>
+        </div>
+        <div>
+          <p className="text-gray-500">Kaina:</p>
+          <p className="font-semibold">€{booking.totalPrice}</p>
         </div>
       </div>
 
-      {booking.notes && (
+      {booking.notesForSitter && (
         <div className="mt-4 pt-4 border-t">
           <p className="text-sm text-gray-500">Pastabos:</p>
-          <p className="text-gray-700">{booking.notes}</p>
+          <p className="text-gray-700">{booking.notesForSitter}</p>
         </div>
       )}
 
-      {booking.sitterProfile?.user?.phone && (
+      {booking.sitter?.user?.phone && (
         <div className="mt-4 pt-4 border-t">
           <p className="text-sm text-gray-500">Kontaktas:</p>
-          <p className="text-gray-700">📞 {booking.sitterProfile.user.phone}</p>
+          <p className="text-gray-700">📞 {booking.sitter.user.phone}</p>
         </div>
       )}
     </div>
@@ -174,9 +179,12 @@ function CreateBookingModal({ onClose, onSuccess }: { onClose: () => void; onSuc
   const [formData, setFormData] = useState({
     petId: '',
     sitterProfileId: '',
-    startDate: '',
-    endDate: '',
-    notes: '',
+    address: '',
+    date: '',
+    timeStart: '09:00',
+    timeEnd: '17:00',
+    totalPrice: 0,
+    notesForSitter: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -276,38 +284,81 @@ function CreateBookingModal({ onClose, onSuccess }: { onClose: () => void; onSuc
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Pradžios data *
+                Adresas *
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                placeholder="Gatvė 123, Vilnius"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Data *
               </label>
               <input
                 type="date"
                 required
-                value={formData.startDate}
-                onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                value={formData.date}
+                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Pradžia *
+                </label>
+                <input
+                  type="time"
+                  required
+                  value={formData.timeStart}
+                  onChange={(e) => setFormData({ ...formData, timeStart: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Pabaiga *
+                </label>
+                <input
+                  type="time"
+                  required
+                  value={formData.timeEnd}
+                  onChange={(e) => setFormData({ ...formData, timeEnd: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Bendra kaina (€) *
+              </label>
+              <input
+                type="number"
+                required
+                min="0"
+                step="0.5"
+                value={formData.totalPrice}
+                onChange={(e) => setFormData({ ...formData, totalPrice: parseFloat(e.target.value) })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Pabaigos data *
-              </label>
-              <input
-                type="date"
-                required
-                value={formData.endDate}
-                onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Pastabos
+                Pastabos priežiūrėtojui
               </label>
               <textarea
                 rows={3}
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                value={formData.notesForSitter}
+                onChange={(e) => setFormData({ ...formData, notesForSitter: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 placeholder="Papildoma informacija..."
               />

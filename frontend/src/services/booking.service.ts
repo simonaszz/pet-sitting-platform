@@ -6,8 +6,9 @@ export const VisitStatus = {
   PENDING: 'PENDING',
   ACCEPTED: 'ACCEPTED',
   REJECTED: 'REJECTED',
+  PAID: 'PAID',
+  CANCELED: 'CANCELED',
   COMPLETED: 'COMPLETED',
-  CANCELLED: 'CANCELLED',
 } as const;
 
 export type VisitStatus = (typeof VisitStatus)[keyof typeof VisitStatus];
@@ -15,17 +16,20 @@ export type VisitStatus = (typeof VisitStatus)[keyof typeof VisitStatus];
 export interface Visit {
   id: string;
   ownerId: string;
-  sitterProfileId: string;
+  sitterId: string;
+  sitterUserId: string;
   petId: string;
-  startDate: string;
-  endDate: string;
+  address: string;
+  date: string;
+  timeStart: string;
+  timeEnd: string;
   status: VisitStatus;
-  notes?: string;
-  totalPrice?: number;
+  notesForSitter?: string;
+  totalPrice: number;
   createdAt: string;
   updatedAt: string;
   pet?: Pet;
-  sitterProfile?: SitterProfile & {
+  sitter?: SitterProfile & {
     user?: {
       id: string;
       name: string;
@@ -43,9 +47,12 @@ export interface Visit {
 export interface CreateVisitData {
   sitterProfileId: string;
   petId: string;
-  startDate: string;
-  endDate: string;
-  notes?: string;
+  address: string;
+  date: string;
+  timeStart: string;
+  timeEnd: string;
+  totalPrice: number;
+  notesForSitter?: string;
 }
 
 export const bookingService = {
@@ -86,8 +93,9 @@ export const getStatusLabel = (status: VisitStatus): string => {
     PENDING: 'Laukiama',
     ACCEPTED: 'Priimta',
     REJECTED: 'Atmesta',
+    PAID: 'Apmokėta',
+    CANCELED: 'Atšaukta',
     COMPLETED: 'Baigta',
-    CANCELLED: 'Atšaukta',
   };
   return labels[status];
 };
@@ -97,8 +105,9 @@ export const getStatusColor = (status: VisitStatus): string => {
     PENDING: 'bg-yellow-100 text-yellow-800',
     ACCEPTED: 'bg-green-100 text-green-800',
     REJECTED: 'bg-red-100 text-red-800',
-    COMPLETED: 'bg-blue-100 text-blue-800',
-    CANCELLED: 'bg-gray-100 text-gray-800',
+    PAID: 'bg-blue-100 text-blue-800',
+    CANCELED: 'bg-gray-100 text-gray-800',
+    COMPLETED: 'bg-purple-100 text-purple-800',
   };
   return colors[status];
 };

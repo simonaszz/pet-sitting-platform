@@ -1,4 +1,4 @@
-import { IsString, IsDateString, IsOptional } from 'class-validator';
+import { IsString, IsDateString, IsOptional, IsNumber, Min } from 'class-validator';
 
 export class CreateVisitDto {
   @IsString()
@@ -7,13 +7,23 @@ export class CreateVisitDto {
   @IsString()
   petId: string;
 
-  @IsDateString()
-  startDate: string;
+  @IsString()
+  address: string;
 
   @IsDateString()
-  endDate: string;
+  date: string;
+
+  @IsString()
+  timeStart: string; // "09:00"
+
+  @IsString()
+  timeEnd: string; // "17:00"
+
+  @IsNumber()
+  @Min(0)
+  totalPrice: number;
 
   @IsString()
   @IsOptional()
-  notes?: string;
+  notesForSitter?: string;
 }
