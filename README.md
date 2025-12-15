@@ -221,6 +221,15 @@ cp .env.example .env
 nano .env
 ```
 
+> **🔒 SECURITY WARNING:**  
+> - **NEVER** commit `.env` to git (already in `.gitignore`)
+> - **CHANGE** all default passwords and secrets in `.env`
+> - **GENERATE** strong JWT secrets:
+>   ```bash
+>   openssl rand -base64 64
+>   ```
+> - See [SECURITY.md](./SECURITY.md) for best practices
+
 > **📝 Note:** Projektas naudoja vieną centralizuotą `.env` failą root kataloge, 
 > kuris automatiškai injektuojamas į visus Docker servisus. 
 > Žiūrėk [ENV_CONFIGURATION.md](./ENV_CONFIGURATION.md) daugiau info.
