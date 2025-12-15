@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import PetsPage from './pages/PetsPage';
 import SittersPage from './pages/SittersPage';
+import SitterDetailPage from './pages/SitterDetailPage';
 import MySitterProfilePage from './pages/MySitterProfilePage';
 import MyBookingsPage from './pages/MyBookingsPage';
 
@@ -177,6 +178,14 @@ function App() {
           element={
             <ProtectedRoute>
               <SittersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sitters/:id"
+          element={
+            <ProtectedRoute>
+              <SitterDetailPage />
             </ProtectedRoute>
           }
         />
