@@ -3,6 +3,8 @@ import { useAuthStore } from './store/auth.store';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import PetsPage from './pages/PetsPage';
+import SittersPage from './pages/SittersPage';
+import MySitterProfilePage from './pages/MySitterProfilePage';
 
 // Layout with Navigation
 function Layout({ children }: { children: React.ReactNode }) {
@@ -30,6 +32,16 @@ function Layout({ children }: { children: React.ReactNode }) {
                   Pagrindinis
                 </Link>
                 <Link
+                  to="/sitters"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition ${
+                    location.pathname === '/sitters'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Priežiūrėtojai
+                </Link>
+                <Link
                   to="/pets"
                   className={`px-3 py-2 rounded-md text-sm font-medium transition ${
                     location.pathname === '/pets'
@@ -38,6 +50,16 @@ function Layout({ children }: { children: React.ReactNode }) {
                   }`}
                 >
                   Mano augintiniai
+                </Link>
+                <Link
+                  to="/my-sitter-profile"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition ${
+                    location.pathname === '/my-sitter-profile'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Mano profilis
                 </Link>
               </div>
             </div>
@@ -140,10 +162,26 @@ function App() {
           }
         />
         <Route
+          path="/sitters"
+          element={
+            <ProtectedRoute>
+              <SittersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/pets"
           element={
             <ProtectedRoute>
               <PetsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-sitter-profile"
+          element={
+            <ProtectedRoute>
+              <MySitterProfilePage />
             </ProtectedRoute>
           }
         />
