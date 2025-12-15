@@ -7,6 +7,7 @@ import SittersPage from './pages/SittersPage';
 import SitterDetailPage from './pages/SitterDetailPage';
 import MySitterProfilePage from './pages/MySitterProfilePage';
 import MyBookingsPage from './pages/MyBookingsPage';
+import MyJobsPage from './pages/MyJobsPage';
 
 // Layout with Navigation
 function Layout({ children }: { children: React.ReactNode }) {
@@ -72,6 +73,16 @@ function Layout({ children }: { children: React.ReactNode }) {
                   }`}
                 >
                   Rezervacijos
+                </Link>
+                <Link
+                  to="/my-jobs"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition ${
+                    location.pathname === '/my-jobs'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Mano darbai
                 </Link>
               </div>
             </div>
@@ -210,6 +221,14 @@ function App() {
           element={
             <ProtectedRoute>
               <MyBookingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-jobs"
+          element={
+            <ProtectedRoute>
+              <MyJobsPage />
             </ProtectedRoute>
           }
         />

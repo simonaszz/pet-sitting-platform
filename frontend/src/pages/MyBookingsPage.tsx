@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { bookingService, getStatusLabel, getStatusColor } from '../services/booking.service';
 import { petService } from '../services/pet.service';
 import { sitterService } from '../services/sitter.service';
+import { useToast } from '../hooks/useToast';
 import type { Visit } from '../services/booking.service';
 import type { Pet } from '../services/pet.service';
 import type { SitterProfile } from '../services/sitter.service';
@@ -10,6 +11,7 @@ export default function MyBookingsPage() {
   const [bookings, setBookings] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     loadBookings();
@@ -21,7 +23,8 @@ export default function MyBookingsPage() {
       const data = await bookingService.getMyBookings();
       setBookings(data);
     } catch (err) {
-      console.error('Nepavyko užkrauti rezervacijų');
+      toast.error('Nepavyko užkrauti rezervacijų');
+      console.error('Failed to load bookings:', err);
     } finally {
       setLoading(false);
     }
@@ -32,9 +35,10 @@ export default function MyBookingsPage() {
 
     try {
       await bookingService.cancelBooking(id);
+      toast.success('Rezervacija atšaukta');
       await loadBookings();
-    } catch (err) {
-      alert('Nepavyko atšaukti rezervacijos');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Nepavyko atšaukti rezervacijos');
     }
   };
 
@@ -188,6 +192,7 @@ function CreateBookingModal({ onClose, onSuccess }: { onClose: () => void; onSuc
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const toast = useToast();
 
   useEffect(() => {
     loadData();
@@ -213,9 +218,12 @@ function CreateBookingModal({ onClose, onSuccess }: { onClose: () => void; onSuc
 
     try {
       await bookingService.createBooking(formData);
+      toast.success('Rezervacija sėkmingai sukurta!');
       onSuccess();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Nepavyko sukurti rezervacijos');
+      const errorMsg = err.response?.data?.message || 'Nepavyko sukurti rezervacijos';
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
