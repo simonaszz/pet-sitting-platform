@@ -1,30 +1,51 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/auth.store';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import PetsPage from './pages/PetsPage';
 
-// Simple Home Page
-function HomePage() {
-  const { user, isAuthenticated } = useAuthStore();
-  const { clearAuth } = useAuthStore();
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" />;
-  }
+// Layout with Navigation
+function Layout({ children }: { children: React.ReactNode }) {
+  const { user, clearAuth } = useAuthStore();
+  const location = useLocation();
 
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold">🐾 Augintinių priežiūros platforma</h1>
+            <div className="flex items-center space-x-8">
+              <Link to="/" className="text-xl font-bold text-gray-900 hover:text-purple-600 transition">
+                🐾 Augintinių priežiūra
+              </Link>
+              <div className="hidden md:flex space-x-4">
+                <Link
+                  to="/"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition ${
+                    location.pathname === '/'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Pagrindinis
+                </Link>
+                <Link
+                  to="/pets"
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition ${
+                    location.pathname === '/pets'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Mano augintiniai
+                </Link>
+              </div>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-gray-700">Sveiki, {user?.name}!</span>
+              <span className="text-gray-700 text-sm">Sveiki, {user?.name}!</span>
               <button
                 onClick={clearAuth}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition"
               >
                 Atsijungti
               </button>
@@ -33,20 +54,73 @@ function HomePage() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          <div className="border-4 border-dashed border-gray-200 rounded-lg p-8">
-            <h2 className="text-2xl font-bold mb-4">Sveiki atvykę į Augintinių priežiūros platformą!</h2>
-            <div className="space-y-2">
-              <p><strong>ID:</strong> {user?.id}</p>
-              <p><strong>El. paštas:</strong> {user?.email}</p>
-              <p><strong>Vardas:</strong> {user?.name}</p>
-              <p><strong>Rolė:</strong> {user?.role}</p>
-              <p><strong>Patvirtintas:</strong> {user?.isEmailVerified ? 'Taip' : 'Ne'}</p>
-            </div>
+      <main>{children}</main>
+    </div>
+  );
+}
+
+// Protected Route Wrapper
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useAuthStore();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />;
+  }
+
+  return <Layout>{children}</Layout>;
+}
+
+// Home Page
+function HomePage() {
+  const { user } = useAuthStore();
+
+  return (
+    <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <div className="px-4 py-6 sm:px-0">
+        <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-2xl p-8 mb-6">
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">
+            Sveiki atvykę į Augintinių priežiūros platformą! 🐾
+          </h2>
+          <p className="text-gray-700">
+            Pradėkite naudotis platforma pridėdami savo augintinius.
+          </p>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-md p-6">
+          <h3 className="text-xl font-bold text-gray-900 mb-4">Jūsų profilis</h3>
+          <div className="space-y-2">
+            <p className="text-gray-700">
+              <strong>El. paštas:</strong> {user?.email}
+            </p>
+            <p className="text-gray-700">
+              <strong>Vardas:</strong> {user?.name}
+            </p>
+            <p className="text-gray-700">
+              <strong>Rolė:</strong> {user?.role}
+            </p>
+            <p className="text-gray-700">
+              <strong>Patvirtintas:</strong> {user?.isEmailVerified ? 'Taip ✅' : 'Ne ❌'}
+            </p>
           </div>
         </div>
-      </main>
+
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Link
+            to="/pets"
+            className="block bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition"
+          >
+            <div className="text-4xl mb-3">🐕</div>
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Mano augintiniai</h3>
+            <p className="text-gray-600">Tvarkykite savo augintinių informaciją</p>
+          </Link>
+
+          <div className="block bg-gray-50 rounded-xl border-2 border-dashed border-gray-300 p-6">
+            <div className="text-4xl mb-3 opacity-50">🔜</div>
+            <h3 className="text-lg font-bold text-gray-500 mb-2">Daugiau funkcijų</h3>
+            <p className="text-gray-400">Greitai...</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -55,9 +129,24 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <HomePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/pets"
+          element={
+            <ProtectedRoute>
+              <PetsPage />
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );
