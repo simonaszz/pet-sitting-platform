@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { petService, Pet, CreatePetData, PetType, getPetTypeLabel } from '../services/pet.service';
+import { petService, PetType, getPetTypeLabel } from '../services/pet.service';
+import type { Pet, CreatePetData } from '../services/pet.service';
 
 export default function PetsPage() {
   const [pets, setPets] = useState<Pet[]>([]);

@@ -1,12 +1,14 @@
 import { api } from './api';
 
-export enum PetType {
-  DOG = 'DOG',
-  CAT = 'CAT',
-  BIRD = 'BIRD',
-  RABBIT = 'RABBIT',
-  OTHER = 'OTHER',
-}
+export const PetType = {
+  DOG: 'DOG',
+  CAT: 'CAT',
+  BIRD: 'BIRD',
+  RABBIT: 'RABBIT',
+  OTHER: 'OTHER',
+} as const;
+
+export type PetType = (typeof PetType)[keyof typeof PetType];
 
 export interface Pet {
   id: string;
