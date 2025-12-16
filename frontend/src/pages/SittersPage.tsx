@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { sitterService, getServiceLabel } from '../services/sitter.service';
 import type { SitterProfile } from '../services/sitter.service';
 
@@ -55,21 +55,21 @@ export default function SittersPage() {
               type="text"
               placeholder="Miestas"
               value={filters.city}
-              onChange={(e) => setFilters({ ...filters, city: e.target.value })}
+              onChange={(changeEvent) => setFilters({ ...filters, city: changeEvent.target.value })}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
             <input
               type="number"
               placeholder="Min. kaina €/val"
               value={filters.minRate}
-              onChange={(e) => setFilters({ ...filters, minRate: e.target.value })}
+              onChange={(changeEvent) => setFilters({ ...filters, minRate: changeEvent.target.value })}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
             <input
               type="number"
               placeholder="Max. kaina €/val"
               value={filters.maxRate}
-              onChange={(e) => setFilters({ ...filters, maxRate: e.target.value })}
+              onChange={(changeEvent) => setFilters({ ...filters, maxRate: changeEvent.target.value })}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             />
             <button
@@ -115,6 +115,8 @@ export default function SittersPage() {
 }
 
 function SitterCard({ sitter }: { sitter: SitterProfile }) {
+  const navigate = useNavigate();
+
   return (
     <Link
       to={`/sitters/${sitter.id}`}
@@ -164,6 +166,20 @@ function SitterCard({ sitter }: { sitter: SitterProfile }) {
             ))}
           </div>
         )}
+
+        <div className="mt-6">
+          <button
+            type="button"
+            onClick={(clickEvent) => {
+              clickEvent.preventDefault();
+              clickEvent.stopPropagation();
+              navigate(`/bookings?sitterProfileId=${sitter.id}`);
+            }}
+            className="w-full px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition font-semibold"
+          >
+            📅 Rezervuoti
+          </button>
+        </div>
       </div>
     </Link>
   );

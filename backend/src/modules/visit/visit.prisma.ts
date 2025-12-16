@@ -1,5 +1,9 @@
 export const visitIncludeForOwnerList = {
-  pet: true,
+  visitPets: {
+    include: {
+      pet: true,
+    },
+  },
   sitter: {
     include: {
       user: {
@@ -14,7 +18,11 @@ export const visitIncludeForOwnerList = {
 } as const;
 
 export const visitIncludeForSitterList = {
-  pet: true,
+  visitPets: {
+    include: {
+      pet: true,
+    },
+  },
   owner: {
     select: {
       id: true,
@@ -26,7 +34,11 @@ export const visitIncludeForSitterList = {
 } as const;
 
 export const visitIncludeForSitterStatusUpdate = {
-  pet: true,
+  visitPets: {
+    include: {
+      pet: true,
+    },
+  },
   owner: {
     select: {
       id: true,

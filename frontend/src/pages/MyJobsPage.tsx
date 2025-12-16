@@ -7,6 +7,9 @@ import type { Visit } from '../services/booking.service';
 export default function MyJobsPage() {
   const [jobs, setJobs] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [rejectingVisitId, setRejectingVisitId] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectLoading, setRejectLoading] = useState(false);
   const toast = useToast();
 
   const loadJobs = useCallback(async () => {
@@ -33,6 +36,28 @@ export default function MyJobsPage() {
       await loadJobs();
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Nepavyko atnaujinti statuso'));
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectingVisitId) return;
+    const reason = rejectionReason.trim();
+    if (!reason) {
+      toast.error('Įrašykite atmetimo priežastį');
+      return;
+    }
+
+    try {
+      setRejectLoading(true);
+      await bookingService.rejectBooking(rejectingVisitId, reason);
+      toast.success('Užsakymas atmestas');
+      setRejectingVisitId(null);
+      setRejectionReason('');
+      await loadJobs();
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Nepavyko atmesti užsakymo'));
+    } finally {
+      setRejectLoading(false);
     }
   };
 
@@ -68,16 +93,81 @@ export default function MyJobsPage() {
                 key={job.id}
                 job={job}
                 onStatusUpdate={handleStatusUpdate}
+                onReject={(jobId) => {
+                  setRejectingVisitId(jobId);
+                  setRejectionReason('');
+                }}
               />
             ))}
           </div>
         )}
       </div>
+
+      {rejectingVisitId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-900">Atmetimo priežastis</h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRejectingVisitId(null);
+                    setRejectionReason('');
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <textarea
+                rows={4}
+                value={rejectionReason}
+                onChange={(changeEvent) => setRejectionReason(changeEvent.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                placeholder="Pvz. netinkamas laikas, per mažas įkainis, per daug augintinių, ..."
+              />
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRejectingVisitId(null);
+                    setRejectionReason('');
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+                >
+                  Atšaukti
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReject}
+                  disabled={rejectLoading}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition font-semibold"
+                >
+                  {rejectLoading ? 'Atmetama...' : 'Atmesti'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function JobCard({ job, onStatusUpdate }: { job: Visit; onStatusUpdate: (id: string, status: VisitStatus) => void }) {
+function JobCard({
+  job,
+  onStatusUpdate,
+  onReject,
+}: {
+  job: Visit;
+  onStatusUpdate: (id: string, status: VisitStatus) => void;
+  onReject: (id: string) => void;
+}) {
   const formatDate = (date: string) => {
     return new Date(date).toLocaleDateString('lt-LT', {
       year: 'numeric',
@@ -85,6 +175,20 @@ function JobCard({ job, onStatusUpdate }: { job: Visit; onStatusUpdate: (id: str
       day: 'numeric',
     });
   };
+
+  const formatDateTime = (dateTime: string) => {
+    return new Date(dateTime).toLocaleString('lt-LT', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const petsLabel = job.pets?.length
+    ? job.pets.map((pet) => pet.name).join(', ')
+    : 'Nežinomas';
 
   const canAccept = job.status === 'PENDING';
   const canReject = job.status === 'PENDING' || job.status === 'ACCEPTED';
@@ -102,7 +206,7 @@ function JobCard({ job, onStatusUpdate }: { job: Visit; onStatusUpdate: (id: str
               {getStatusLabel(job.status)}
             </span>
           </div>
-          <p className="text-gray-600">🐾 Augintinys: {job.pet?.name || 'Nežinomas'}</p>
+          <p className="text-gray-600">🐾 Augintinys: {petsLabel}</p>
           <p className="text-gray-600">📍 Adresas: {job.address}</p>
         </div>
         <div className="text-right">
@@ -119,6 +223,11 @@ function JobCard({ job, onStatusUpdate }: { job: Visit; onStatusUpdate: (id: str
           <p className="text-gray-500">Laikas:</p>
           <p className="font-semibold">{job.timeStart} - {job.timeEnd}</p>
         </div>
+      </div>
+
+      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+        <p className="text-sm text-gray-500 mb-1">Pateikta:</p>
+        <p className="text-gray-700">{formatDateTime(job.createdAt)}</p>
       </div>
 
       {job.notesForSitter && (
@@ -150,7 +259,7 @@ function JobCard({ job, onStatusUpdate }: { job: Visit; onStatusUpdate: (id: str
         )}
         {canReject && (
           <button
-            onClick={() => onStatusUpdate(job.id, 'REJECTED')}
+            onClick={() => onReject(job.id)}
             className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold"
           >
             ✕ Atmesti

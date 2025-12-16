@@ -48,8 +48,8 @@ export default function MySitterProfilePage() {
     loadProfile();
   }, [loadProfile]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (submitEvent: React.FormEvent) => {
+    submitEvent.preventDefault();
     setError('');
     setLoading(true);
 
@@ -192,7 +192,7 @@ export default function MySitterProfilePage() {
                 type="text"
                 required
                 value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                onChange={(changeEvent) => setFormData({ ...formData, city: changeEvent.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 placeholder="Vilnius"
               />
@@ -208,7 +208,7 @@ export default function MySitterProfilePage() {
                 min="0"
                 step="0.5"
                 value={formData.hourlyRate}
-                onChange={(e) => setFormData({ ...formData, hourlyRate: parseFloat(e.target.value) })}
+                onChange={(changeEvent) => setFormData({ ...formData, hourlyRate: parseFloat(changeEvent.target.value) })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               />
             </div>
@@ -220,7 +220,7 @@ export default function MySitterProfilePage() {
               <textarea
                 rows={4}
                 value={formData.bio}
-                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                onChange={(bioChange) => setFormData({ ...formData, bio: bioChange.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 placeholder="Papasakokite apie save ir savo patirtį..."
               />
@@ -254,7 +254,7 @@ export default function MySitterProfilePage() {
                   type="number"
                   min="0"
                   value={formData.experienceYears}
-                  onChange={(e) => setFormData({ ...formData, experienceYears: parseInt(e.target.value) })}
+                  onChange={(changeEvent) => setFormData({ ...formData, experienceYears: parseInt(changeEvent.target.value) })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
@@ -266,7 +266,7 @@ export default function MySitterProfilePage() {
                   type="number"
                   min="1"
                   value={formData.maxPets}
-                  onChange={(e) => setFormData({ ...formData, maxPets: parseInt(e.target.value) })}
+                  onChange={(changeEvent) => setFormData({ ...formData, maxPets: parseInt(changeEvent.target.value) })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>

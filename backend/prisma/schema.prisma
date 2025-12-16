@@ -70,7 +70,7 @@ model Pet {
   updatedAt     DateTime @updatedAt
 
   owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  visits        Visit[]
+  visitPets     VisitPet[]
 
   @@index([ownerId])
 }
@@ -126,13 +126,13 @@ model Visit {
   ownerId         String
   sitterId        String
   sitterUserId    String      // Direct link to User for sitterVisits relation
-  petId           String
   address         String
   date            DateTime
   timeStart       String      // "09:00"
   timeEnd         String      // "17:00"
   status          VisitStatus @default(PENDING)
   notesForSitter  String?
+  rejectionReason String?
   totalPrice      Decimal     @db.Decimal(10, 2)
   paidAt          DateTime?
   canceledBy      String?
@@ -144,7 +144,7 @@ model Visit {
   owner           User          @relation("OwnerVisits", fields: [ownerId], references: [id], onDelete: Cascade)
   sitter          SitterProfile @relation(fields: [sitterId], references: [id], onDelete: Cascade)
   sitterUser      User          @relation("SitterUserVisits", fields: [sitterUserId], references: [id], onDelete: Cascade)
-  pet             Pet           @relation(fields: [petId], references: [id], onDelete: Cascade)
+  visitPets       VisitPet[]
   photos          VisitPhoto[]
   reviews         Review[]
   transactions    Transaction[]
@@ -154,6 +154,18 @@ model Visit {
   @@index([sitterUserId])
   @@index([status])
   @@index([date])
+}
+
+model VisitPet {
+  visitId String
+  petId   String
+
+  visit   Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  pet     Pet   @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  @@id([visitId, petId])
+  @@index([visitId])
+  @@index([petId])
 }
 
 enum VisitStatus {

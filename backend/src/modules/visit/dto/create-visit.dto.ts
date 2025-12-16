@@ -4,14 +4,18 @@ import {
   IsOptional,
   IsNumber,
   Min,
+  IsArray,
+  ArrayNotEmpty,
 } from 'class-validator';
 
 export class CreateVisitDto {
   @IsString()
   sitterProfileId: string;
 
-  @IsString()
-  petId: string;
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  petIds: string[];
 
   @IsString()
   address: string;

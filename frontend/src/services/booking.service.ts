@@ -18,17 +18,17 @@ export interface Visit {
   ownerId: string;
   sitterId: string;
   sitterUserId: string;
-  petId: string;
   address: string;
   date: string;
   timeStart: string;
   timeEnd: string;
   status: VisitStatus;
   notesForSitter?: string;
+  rejectionReason?: string;
   totalPrice: number;
   createdAt: string;
   updatedAt: string;
-  pet?: Pet;
+  pets?: Pet[];
   sitter?: SitterProfile & {
     user?: {
       id: string;
@@ -46,12 +46,22 @@ export interface Visit {
 
 export interface CreateVisitData {
   sitterProfileId: string;
-  petId: string;
+  petIds: string[];
   address: string;
   date: string;
   timeStart: string;
   timeEnd: string;
   totalPrice: number;
+  notesForSitter?: string;
+}
+
+export interface UpdateRejectedVisitData {
+  petIds?: string[];
+  address?: string;
+  date?: string;
+  timeStart?: string;
+  timeEnd?: string;
+  totalPrice?: number;
   notesForSitter?: string;
 }
 
@@ -77,6 +87,26 @@ export const bookingService = {
   // Atnaujinti statusą (kaip sitter)
   async updateStatus(visitId: string, status: VisitStatus): Promise<Visit> {
     const response = await api.patch<Visit>(`/visits/${visitId}/status`, { status });
+    return response.data;
+  },
+
+  async rejectBooking(visitId: string, rejectionReason: string): Promise<Visit> {
+    const response = await api.patch<Visit>(`/visits/${visitId}/reject`, { rejectionReason });
+    return response.data;
+  },
+
+  async updateRejectedBooking(visitId: string, data: UpdateRejectedVisitData): Promise<Visit> {
+    const response = await api.patch<Visit>(`/visits/${visitId}`, data);
+    return response.data;
+  },
+
+  async resubmitBooking(visitId: string): Promise<Visit> {
+    const response = await api.patch<Visit>(`/visits/${visitId}/resubmit`);
+    return response.data;
+  },
+
+  async deleteRejectedBooking(visitId: string): Promise<{ success: true }> {
+    const response = await api.delete<{ success: true }>(`/visits/${visitId}`);
     return response.data;
   },
 

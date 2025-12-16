@@ -6,11 +6,15 @@ import {
   MinLength,
   IsArray,
   IsInt,
+  ValidateIf,
 } from 'class-validator';
 import type { Prisma } from '@prisma/client';
 
 export class UpdateSitterProfileDto {
   @IsString()
+  @ValidateIf(
+    (o: UpdateSitterProfileDto) => o.bio !== undefined && o.bio.trim() !== '',
+  )
   @MinLength(10, { message: 'Aprašymas turi būti bent 10 simbolių' })
   @IsOptional()
   bio?: string;

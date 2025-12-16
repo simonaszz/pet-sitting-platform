@@ -223,7 +223,7 @@ export default function SitterDetailPage() {
                 </div>
               )}
               <button
-                onClick={() => navigate('/bookings')}
+                onClick={() => navigate(`/bookings?sitterProfileId=${sitter.id}`)}
                 className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition duration-200 font-semibold"
               >
                 📅 Rezervuoti
