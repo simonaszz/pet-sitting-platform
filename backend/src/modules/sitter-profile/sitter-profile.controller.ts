@@ -14,6 +14,7 @@ import { CreateSitterProfileDto } from './dto/create-sitter-profile.dto';
 import { UpdateSitterProfileDto } from './dto/update-sitter-profile.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { CurrentUser as CurrentUserType } from '../../common/types/current-user.type';
 
 @Controller('sitter-profiles')
 export class SitterProfileController {
@@ -22,7 +23,10 @@ export class SitterProfileController {
   // POST /sitter-profiles - Sukurti savo profilį (protected)
   @Post()
   @UseGuards(JwtAuthGuard)
-  create(@CurrentUser() user: any, @Body() createDto: CreateSitterProfileDto) {
+  create(
+    @CurrentUser() user: CurrentUserType,
+    @Body() createDto: CreateSitterProfileDto,
+  ) {
     return this.sitterProfileService.create(user.id, createDto);
   }
 
@@ -46,7 +50,7 @@ export class SitterProfileController {
   // GET /sitter-profiles/me - Gauti savo profilį (protected)
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  getMyProfile(@CurrentUser() user: any) {
+  getMyProfile(@CurrentUser() user: CurrentUserType) {
     return this.sitterProfileService.getMyProfile(user.id);
   }
 
@@ -59,14 +63,17 @@ export class SitterProfileController {
   // PATCH /sitter-profiles/me - Atnaujinti savo profilį (protected)
   @Patch('me')
   @UseGuards(JwtAuthGuard)
-  update(@CurrentUser() user: any, @Body() updateDto: UpdateSitterProfileDto) {
+  update(
+    @CurrentUser() user: CurrentUserType,
+    @Body() updateDto: UpdateSitterProfileDto,
+  ) {
     return this.sitterProfileService.update(user.id, updateDto);
   }
 
   // DELETE /sitter-profiles/me - Ištrinti savo profilį (protected)
   @Delete('me')
   @UseGuards(JwtAuthGuard)
-  remove(@CurrentUser() user: any) {
+  remove(@CurrentUser() user: CurrentUserType) {
     return this.sitterProfileService.delete(user.id);
   }
 }

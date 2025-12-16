@@ -1,6 +1,16 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateVisitDto } from './dto/create-visit.dto';
+import { VisitStatus } from '@prisma/client';
+import {
+  visitIncludeForOwnerList,
+  visitIncludeForSitterList,
+  visitIncludeForSitterStatusUpdate,
+} from './visit.prisma';
 
 @Injectable()
 export class VisitService {
@@ -8,33 +18,17 @@ export class VisitService {
 
   // Sukurti rezervaciją (owner creates visit)
   async create(ownerId: string, dto: CreateVisitDto) {
-    // Patikrinti ar pet priklauso owner'iui
-    const pet = await this.prisma.pet.findUnique({
-      where: { id: dto.petId },
-    });
-
-    if (!pet || pet.ownerId !== ownerId) {
-      throw new ForbiddenException('Šis augintinys jums nepriklauso');
-    }
-
-    // Patikrinti ar sitter profile egzistuoja ir gauti userId
-    const sitterProfile = await this.prisma.sitterProfile.findUnique({
-      where: { id: dto.sitterProfileId },
-      include: {
-        user: true,
-      },
-    });
-
-    if (!sitterProfile) {
-      throw new NotFoundException('Priežiūrėtojo profilis nerastas');
-    }
+    await this.assertPetOwnedByOwner(ownerId, dto.petId);
+    const sitterUserId = await this.getSitterUserIdByProfileId(
+      dto.sitterProfileId,
+    );
 
     // Sukurti visit
     return this.prisma.visit.create({
       data: {
         ownerId,
         sitterId: dto.sitterProfileId,
-        sitterUserId: sitterProfile.userId,
+        sitterUserId,
         petId: dto.petId,
         address: dto.address,
         date: new Date(dto.date),
@@ -44,20 +38,7 @@ export class VisitService {
         notesForSitter: dto.notesForSitter,
         status: 'PENDING',
       },
-      include: {
-        pet: true,
-        sitter: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                phone: true,
-              },
-            },
-          },
-        },
-      },
+      include: visitIncludeForOwnerList,
     });
   }
 
@@ -65,20 +46,7 @@ export class VisitService {
   async findMyVisitsAsOwner(ownerId: string) {
     return this.prisma.visit.findMany({
       where: { ownerId },
-      include: {
-        pet: true,
-        sitter: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                phone: true,
-              },
-            },
-          },
-        },
-      },
+      include: visitIncludeForOwnerList,
       orderBy: {
         date: 'desc',
       },
@@ -89,17 +57,7 @@ export class VisitService {
   async findMyVisitsAsSitter(userId: string) {
     return this.prisma.visit.findMany({
       where: { sitterUserId: userId },
-      include: {
-        pet: true,
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-          },
-        },
-      },
+      include: visitIncludeForSitterList,
       orderBy: {
         date: 'desc',
       },
@@ -107,7 +65,7 @@ export class VisitService {
   }
 
   // Atnaujinti rezervacijos statusą (tik sitter gali)
-  async updateStatus(visitId: string, userId: string, status: string) {
+  async updateStatus(visitId: string, userId: string, status: VisitStatus) {
     const visit = await this.prisma.visit.findUnique({
       where: { id: visitId },
     });
@@ -123,16 +81,7 @@ export class VisitService {
     return this.prisma.visit.update({
       where: { id: visitId },
       data: { status },
-      include: {
-        pet: true,
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-          },
-        },
-      },
+      include: visitIncludeForSitterStatusUpdate,
     });
   }
 
@@ -147,15 +96,40 @@ export class VisitService {
     }
 
     if (visit.ownerId !== ownerId) {
-      throw new ForbiddenException('Neturite teisės atšaukti šios rezervacijos');
+      throw new ForbiddenException(
+        'Neturite teisės atšaukti šios rezervacijos',
+      );
     }
 
     return this.prisma.visit.update({
       where: { id: visitId },
-      data: { 
-        status: 'CANCELED',
+      data: {
+        status: VisitStatus.CANCELED,
         canceledBy: ownerId,
       },
     });
+  }
+
+  private async assertPetOwnedByOwner(ownerId: string, petId: string) {
+    const pet = await this.prisma.pet.findUnique({
+      where: { id: petId },
+    });
+
+    if (!pet || pet.ownerId !== ownerId) {
+      throw new ForbiddenException('Šis augintinys jums nepriklauso');
+    }
+  }
+
+  private async getSitterUserIdByProfileId(sitterProfileId: string) {
+    const sitterProfile = await this.prisma.sitterProfile.findUnique({
+      where: { id: sitterProfileId },
+      select: { userId: true },
+    });
+
+    if (!sitterProfile) {
+      throw new NotFoundException('Priežiūrėtojo profilis nerastas');
+    }
+
+    return sitterProfile.userId;
   }
 }

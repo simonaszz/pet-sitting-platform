@@ -11,6 +11,8 @@ import { VisitService } from './visit.service';
 import { CreateVisitDto } from './dto/create-visit.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { CurrentUser as CurrentUserType } from '../../common/types/current-user.type';
+import { VisitStatus } from '@prisma/client';
 
 @Controller('visits')
 @UseGuards(JwtAuthGuard)
@@ -19,19 +21,22 @@ export class VisitController {
 
   // POST /visits - Sukurti rezervaciją (owner)
   @Post()
-  create(@CurrentUser() user: any, @Body() createDto: CreateVisitDto) {
+  create(
+    @CurrentUser() user: CurrentUserType,
+    @Body() createDto: CreateVisitDto,
+  ) {
     return this.visitService.create(user.id, createDto);
   }
 
   // GET /visits/my-bookings - Mano rezervacijos kaip owner
   @Get('my-bookings')
-  findMyBookings(@CurrentUser() user: any) {
+  findMyBookings(@CurrentUser() user: CurrentUserType) {
     return this.visitService.findMyVisitsAsOwner(user.id);
   }
 
   // GET /visits/my-jobs - Mano rezervacijos kaip sitter
   @Get('my-jobs')
-  findMyJobs(@CurrentUser() user: any) {
+  findMyJobs(@CurrentUser() user: CurrentUserType) {
     return this.visitService.findMyVisitsAsSitter(user.id);
   }
 
@@ -39,15 +44,15 @@ export class VisitController {
   @Patch(':id/status')
   updateStatus(
     @Param('id') id: string,
-    @CurrentUser() user: any,
-    @Body('status') status: string,
+    @CurrentUser() user: CurrentUserType,
+    @Body('status') status: VisitStatus,
   ) {
     return this.visitService.updateStatus(id, user.id, status);
   }
 
   // PATCH /visits/:id/cancel - Atšaukti (owner)
   @Patch(':id/cancel')
-  cancel(@Param('id') id: string, @CurrentUser() user: any) {
+  cancel(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
     return this.visitService.cancel(id, user.id);
   }
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { sitterService, getServiceLabel } from '../services/sitter.service';
 import type { SitterProfile } from '../services/sitter.service';
@@ -12,11 +12,7 @@ export default function SittersPage() {
     maxRate: '',
   });
 
-  useEffect(() => {
-    loadSitters();
-  }, []);
-
-  const loadSitters = async () => {
+  const loadSitters = useCallback(async () => {
     try {
       setLoading(true);
       const data = await sitterService.getAll({
@@ -27,11 +23,15 @@ export default function SittersPage() {
       console.log('Sitters loaded:', data);
       setSitters(data);
     } catch (err) {
-      console.error('Nepavyko užkrauti priežiūrėtojų:', err);
+      console.error('Nepavyko užkrauti prižiūrėtojų:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters.city, filters.minRate, filters.maxRate]);
+
+  useEffect(() => {
+    loadSitters();
+  }, [loadSitters]);
 
   const handleSearch = () => {
     loadSitters();
@@ -42,8 +42,8 @@ export default function SittersPage() {
       {/* Header */}
       <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <h1 className="text-4xl font-bold mb-4">🐾 Raskite priežiūrėtoją</h1>
-          <p className="text-lg opacity-90">Patikimi augintinių priežiūrėtojai jūsų mieste</p>
+          <h1 className="text-4xl font-bold mb-4">🐾 Raskite prižiūrėtoją</h1>
+          <p className="text-lg opacity-90">Patikimi augintinių prižiūrėtojai jūsų mieste</p>
         </div>
       </div>
 
@@ -93,14 +93,14 @@ export default function SittersPage() {
           <div className="text-center py-12">
             <div className="text-6xl mb-4">🔍</div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              Priežiūrėtojų nerasta
+              Prižiūrėtojų nerasta
             </h3>
             <p className="text-gray-600">Pabandykite pakeisti paieškos filtrus</p>
           </div>
         ) : (
           <>
             <p className="text-gray-600 mb-6">
-              Rasta <strong>{sitters.length}</strong> priežiūrėtoj{sitters.length === 1 ? 'as' : 'ų'}
+              Rasta <strong>{sitters.length}</strong> prižiūrėtoj{sitters.length === 1 ? 'as' : 'ų'}
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {sitters.map((sitter) => (
@@ -124,7 +124,7 @@ function SitterCard({ sitter }: { sitter: SitterProfile }) {
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1">
             <h3 className="text-xl font-bold text-gray-900 mb-1">
-              {sitter.user?.name || 'Priežiūrėtojas'}
+              {sitter.user?.name || 'Prižiūrėtojas'}
             </h3>
             <p className="text-sm text-gray-600">📍 {sitter.city}</p>
           </div>

@@ -5,7 +5,7 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  
+
   const app = await NestFactory.create(AppModule, {
     logger: ['log', 'error', 'warn', 'debug', 'verbose'],
   });
@@ -40,11 +40,11 @@ async function bootstrap() {
     }),
   );
 
-  const port = configService.get('PORT') || 5000;
+  const port = Number(configService.get<string>('PORT') ?? 5000);
   await app.listen(port, '0.0.0.0');
 
   logger.log(`🚀 Application is running on: http://0.0.0.0:${port}/api`);
   logger.log(`📚 Environment: ${configService.get('NODE_ENV')}`);
 }
 
-bootstrap();
+void bootstrap();

@@ -9,9 +9,11 @@ export interface SitterProfile {
   hourlyRate: number;
   services?: string[];
   photos?: string[];
-  availability?: any;
+  availability?: unknown;
   maxPets?: number;
   experienceYears?: number;
+  isVerified?: boolean;
+  responseTime?: number;
   avgRating: number;
   totalReviews: number;
   createdAt: string;
@@ -88,7 +90,7 @@ export const sitterService = {
     return response.data;
   },
 
-  // Gauti vieną profil��
+  // Gauti vieną profilį
   async getById(id: string): Promise<SitterProfile> {
     const response = await api.get<SitterProfile>(`/sitter-profiles/${id}`);
     return response.data;

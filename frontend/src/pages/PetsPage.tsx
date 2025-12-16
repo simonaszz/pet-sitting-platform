@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { petService, PetType, getPetTypeLabel } from '../services/pet.service';
+import { getApiErrorMessage } from '../utils/apiError';
 import type { Pet, CreatePetData } from '../services/pet.service';
 
 export default function PetsPage() {
@@ -8,21 +9,21 @@ export default function PetsPage() {
   const [showModal, setShowModal] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    loadPets();
-  }, []);
-
-  const loadPets = async () => {
+  const loadPets = useCallback(async () => {
     try {
       setLoading(true);
       const data = await petService.getAll();
       setPets(data);
-    } catch (err) {
+    } catch {
       setError('Nepavyko užkrauti augintinių');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadPets();
+  }, [loadPets]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Ar tikrai norite ištrinti šį augintinį?')) return;
@@ -30,7 +31,7 @@ export default function PetsPage() {
     try {
       await petService.delete(id);
       setPets(pets.filter(p => p.id !== id));
-    } catch (err) {
+    } catch {
       alert('Nepavyko ištrinti augintinio');
     }
   };
@@ -165,8 +166,8 @@ function AddPetModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
     try {
       await petService.create(formData);
       onSuccess();
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Nepavyko pridėti augintinio');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Nepavyko pridėti augintinio'));
     } finally {
       setLoading(false);
     }

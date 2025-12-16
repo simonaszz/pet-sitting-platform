@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../services/auth.service';
+import { getApiErrorMessage } from '../utils/apiError';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -17,8 +18,8 @@ export default function LoginPage() {
     try {
       await authService.login({ email, password });
       navigate('/');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Neteisingi prisijungimo duomenys');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Neteisingi prisijungimo duomenys'));
     } finally {
       setLoading(false);
     }

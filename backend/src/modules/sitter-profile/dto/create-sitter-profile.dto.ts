@@ -1,4 +1,13 @@
-import { IsString, IsNumber, IsOptional, Min, MinLength, IsArray, IsInt } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsOptional,
+  Min,
+  MinLength,
+  IsArray,
+  IsInt,
+} from 'class-validator';
+import type { Prisma } from '@prisma/client';
 
 export class CreateSitterProfileDto {
   @IsString()
@@ -27,7 +36,7 @@ export class CreateSitterProfileDto {
   photos?: string[]; // array of URLs
 
   @IsOptional()
-  availability?: any; // JSON object
+  availability?: Prisma.InputJsonValue; // JSON object
 
   @IsInt()
   @IsOptional()

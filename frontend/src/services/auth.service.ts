@@ -20,37 +20,49 @@ interface AuthResponse {
     email: string;
     name: string;
     role: string;
-    phone: string | null;
-    avatar: string | null;
-    isEmailVerified: boolean;
+    phone?: string | null;
+    avatar?: string | null;
+    isEmailVerified?: boolean;
+    createdAt?: string;
   };
   accessToken: string;
   refreshToken: string;
+}
+
+interface CurrentUserResponse {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  phone: string | null;
+  avatar: string | null;
+  isEmailVerified: boolean;
+  createdAt: string;
 }
 
 export const authService = {
   async login(data: LoginData): Promise<AuthResponse> {
     const response = await api.post<AuthResponse>('/auth/login', data);
     const { user, accessToken, refreshToken } = response.data;
-    
+
     // Save to store
     useAuthStore.getState().setAuth(user, accessToken, refreshToken);
-    
+
     return response.data;
   },
 
   async register(data: RegisterData): Promise<AuthResponse> {
     const response = await api.post<AuthResponse>('/auth/register', data);
     const { user, accessToken, refreshToken } = response.data;
-    
+
     // Save to store
     useAuthStore.getState().setAuth(user, accessToken, refreshToken);
-    
+
     return response.data;
   },
 
   async getCurrentUser() {
-    const response = await api.get('/auth/me');
+    const response = await api.get<CurrentUserResponse>('/auth/me');
     return response.data;
   },
 

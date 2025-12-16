@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { bookingService, getStatusLabel, getStatusColor } from '../services/booking.service';
 import { petService } from '../services/pet.service';
 import { sitterService } from '../services/sitter.service';
 import { useToast } from '../hooks/useToast';
+import { getApiErrorMessage } from '../utils/apiError';
 import type { Visit } from '../services/booking.service';
 import type { Pet } from '../services/pet.service';
 import type { SitterProfile } from '../services/sitter.service';
@@ -13,11 +14,7 @@ export default function MyBookingsPage() {
   const [showModal, setShowModal] = useState(false);
   const toast = useToast();
 
-  useEffect(() => {
-    loadBookings();
-  }, []);
-
-  const loadBookings = async () => {
+  const loadBookings = useCallback(async () => {
     try {
       setLoading(true);
       const data = await bookingService.getMyBookings();
@@ -28,7 +25,11 @@ export default function MyBookingsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    loadBookings();
+  }, [loadBookings]);
 
   const handleCancel = async (id: string) => {
     if (!confirm('Ar tikrai norite atšaukti šią rezervaciją?')) return;
@@ -37,8 +38,8 @@ export default function MyBookingsPage() {
       await bookingService.cancelBooking(id);
       toast.success('Rezervacija atšaukta');
       await loadBookings();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Nepavyko atšaukti rezervacijos');
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Nepavyko atšaukti rezervacijos'));
     }
   };
 
@@ -126,7 +127,7 @@ function BookingCard({ booking, onCancel }: { booking: Visit; onCancel: (id: str
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
             <h3 className="text-xl font-bold text-gray-900">
-              {booking.sitter?.user?.name || 'Priežiūrėtojas'}
+              {booking.sitter?.user?.name || 'Prižiūrėtojas'}
             </h3>
             <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(booking.status)}`}>
               {getStatusLabel(booking.status)}
@@ -195,21 +196,25 @@ function CreateBookingModal({ onClose, onSuccess }: { onClose: () => void; onSuc
   const toast = useToast();
 
   useEffect(() => {
-    loadData();
-  }, []);
+    const loadData = async () => {
+      try {
+        const [petsData, sittersData] = await Promise.all([
+          petService.getAll(),
+          sitterService.getAll(),
+        ]);
+        setPets(petsData);
+        setSitters(sittersData);
+      } catch {
+        setError('Nepavyko užkrauti duomenų');
+      }
+    };
 
-  const loadData = async () => {
     try {
-      const [petsData, sittersData] = await Promise.all([
-        petService.getAll(),
-        sitterService.getAll(),
-      ]);
-      setPets(petsData);
-      setSitters(sittersData);
-    } catch (err) {
-      setError('Nepavyko užkrauti duomenų');
+      void loadData();
+    } catch {
+      // no-op
     }
-  };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -220,8 +225,8 @@ function CreateBookingModal({ onClose, onSuccess }: { onClose: () => void; onSuc
       await bookingService.createBooking(formData);
       toast.success('Rezervacija sėkmingai sukurta!');
       onSuccess();
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.message || 'Nepavyko sukurti rezervacijos';
+    } catch (err: unknown) {
+      const errorMsg = getApiErrorMessage(err, 'Nepavyko sukurti rezervacijos');
       setError(errorMsg);
       toast.error(errorMsg);
     } finally {
@@ -273,7 +278,7 @@ function CreateBookingModal({ onClose, onSuccess }: { onClose: () => void; onSuc
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Priežiūrėtojas *
+                Prižiūrėtojas *
               </label>
               <select
                 required
@@ -281,7 +286,7 @@ function CreateBookingModal({ onClose, onSuccess }: { onClose: () => void; onSuc
                 onChange={(e) => setFormData({ ...formData, sitterProfileId: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               >
-                <option value="">Pasirinkite priežiūrėtoją</option>
+                <option value="">Pasirinkite prižiūrėtoją</option>
                 {sitters.map((sitter) => (
                   <option key={sitter.id} value={sitter.id}>
                     {sitter.user?.name} - €{sitter.hourlyRate}/val ({sitter.city})
@@ -361,14 +366,14 @@ function CreateBookingModal({ onClose, onSuccess }: { onClose: () => void; onSuc
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Pastabos priežiūrėtojui
+                Pastabos prižiūrėtojui
               </label>
               <textarea
                 rows={3}
                 value={formData.notesForSitter}
                 onChange={(e) => setFormData({ ...formData, notesForSitter: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="Papildoma informacija..."
+                placeholder="Papildoma informacija prižiūrėtojui..."
               />
             </div>
 

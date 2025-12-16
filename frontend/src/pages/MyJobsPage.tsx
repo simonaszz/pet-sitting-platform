@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { bookingService, getStatusLabel, getStatusColor, VisitStatus } from '../services/booking.service';
 import { useToast } from '../hooks/useToast';
+import { getApiErrorMessage } from '../utils/apiError';
 import type { Visit } from '../services/booking.service';
 
 export default function MyJobsPage() {
@@ -8,11 +9,7 @@ export default function MyJobsPage() {
   const [loading, setLoading] = useState(true);
   const toast = useToast();
 
-  useEffect(() => {
-    loadJobs();
-  }, []);
-
-  const loadJobs = async () => {
+  const loadJobs = useCallback(async () => {
     try {
       setLoading(true);
       const data = await bookingService.getMyJobs();
@@ -23,15 +20,19 @@ export default function MyJobsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    loadJobs();
+  }, [loadJobs]);
 
   const handleStatusUpdate = async (id: string, status: VisitStatus) => {
     try {
       await bookingService.updateStatus(id, status);
       toast.success(`Statusas pakeistas į "${getStatusLabel(status)}"`);
       await loadJobs();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Nepavyko atnaujinti statuso');
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Nepavyko atnaujinti statuso'));
     }
   };
 
@@ -41,7 +42,7 @@ export default function MyJobsPage() {
       <div className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <h1 className="text-3xl font-bold text-gray-900">💼 Mano darbai</h1>
-          <p className="mt-1 text-gray-600">Rezervacijos, kuriose esu priežiūrėtojas</p>
+          <p className="mt-1 text-gray-600">Rezervacijos, kuriose esu prižiūrėtojas</p>
         </div>
       </div>
 

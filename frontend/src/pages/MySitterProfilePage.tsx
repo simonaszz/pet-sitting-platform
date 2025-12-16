@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
 import { sitterService, AVAILABLE_SERVICES, getServiceLabel } from '../services/sitter.service';
+import { getApiErrorMessage } from '../utils/apiError';
 import type { SitterProfile, CreateSitterProfileData } from '../services/sitter.service';
 
 export default function MySitterProfilePage() {
-  const navigate = useNavigate();
   const [profile, setProfile] = useState<SitterProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -19,11 +18,7 @@ export default function MySitterProfilePage() {
   });
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    loadProfile();
-  }, []);
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     try {
       setLoading(true);
       const data = await sitterService.getMyProfile();
@@ -37,14 +32,21 @@ export default function MySitterProfilePage() {
         maxPets: data.maxPets || 1,
         experienceYears: data.experienceYears || 0,
       });
-    } catch (err: any) {
-      if (err.response?.status === 404) {
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, 'Nepavyko užkrauti profilio');
+      if (msg.toLowerCase().includes('nerastas')) {
         setEditing(true);
+        return;
       }
+      setError(msg);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,8 +61,8 @@ export default function MySitterProfilePage() {
       }
       await loadProfile();
       setEditing(false);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Klaida išsaugant profilį');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Klaida išsaugant profilį'));
     } finally {
       setLoading(false);
     }
@@ -98,7 +100,7 @@ export default function MySitterProfilePage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="bg-white rounded-xl shadow-md p-8">
             <div className="flex justify-between items-start mb-6">
-              <h1 className="text-3xl font-bold text-gray-900">Mano priežiūrėtojo profilis</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Mano prižiūrėtojo profilis</h1>
               <button
                 onClick={() => setEditing(true)}
                 className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
@@ -172,7 +174,7 @@ export default function MySitterProfilePage() {
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-xl shadow-md p-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-6">
-            {profile ? 'Redaguoti profilį' : 'Sukurti priežiūrėtojo profilį'}
+            {profile ? 'Redaguoti profilį' : 'Sukurti prižiūrėtojo profilį'}
           </h1>
 
           <form onSubmit={handleSubmit} className="space-y-6">

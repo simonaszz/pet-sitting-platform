@@ -1,4 +1,11 @@
-import { IsString, IsInt, IsOptional, IsEnum, Min, MinLength } from 'class-validator';
+import {
+  IsString,
+  IsInt,
+  IsOptional,
+  IsEnum,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export enum PetType {
   DOG = 'DOG',

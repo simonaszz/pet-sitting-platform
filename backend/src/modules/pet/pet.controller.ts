@@ -13,6 +13,7 @@ import { CreatePetDto } from './dto/create-pet.dto';
 import { UpdatePetDto } from './dto/update-pet.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { CurrentUser as CurrentUserType } from '../../common/types/current-user.type';
 
 @Controller('pets')
 @UseGuards(JwtAuthGuard)
@@ -21,19 +22,22 @@ export class PetController {
 
   // POST /pets - Sukurti naują augintinį
   @Post()
-  create(@CurrentUser() user: any, @Body() createPetDto: CreatePetDto) {
+  create(
+    @CurrentUser() user: CurrentUserType,
+    @Body() createPetDto: CreatePetDto,
+  ) {
     return this.petService.create(user.id, createPetDto);
   }
 
   // GET /pets - Gauti visus vartotojo augintinius
   @Get()
-  findAll(@CurrentUser() user: any) {
+  findAll(@CurrentUser() user: CurrentUserType) {
     return this.petService.findAllByUser(user.id);
   }
 
   // GET /pets/:id - Gauti vieną augintinį
   @Get(':id')
-  findOne(@Param('id') id: string, @CurrentUser() user: any) {
+  findOne(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
     return this.petService.findOne(id, user.id);
   }
 
@@ -41,7 +45,7 @@ export class PetController {
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @CurrentUser() user: any,
+    @CurrentUser() user: CurrentUserType,
     @Body() updatePetDto: UpdatePetDto,
   ) {
     return this.petService.update(id, user.id, updatePetDto);
@@ -49,7 +53,7 @@ export class PetController {
 
   // DELETE /pets/:id - Ištrinti augintinį
   @Delete(':id')
-  remove(@Param('id') id: string, @CurrentUser() user: any) {
+  remove(@Param('id') id: string, @CurrentUser() user: CurrentUserType) {
     return this.petService.remove(id, user.id);
   }
 }

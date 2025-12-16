@@ -42,7 +42,7 @@ function Layout({ children }: { children: React.ReactNode }) {
                       : 'text-gray-700 hover:bg-gray-100'
                   }`}
                 >
-                  Priežiūrėtojai
+                  Prižiūrėtojai
                 </Link>
                 <Link
                   to="/pets"

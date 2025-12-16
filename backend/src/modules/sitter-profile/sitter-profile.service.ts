@@ -1,7 +1,17 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateSitterProfileDto } from './dto/create-sitter-profile.dto';
 import { UpdateSitterProfileDto } from './dto/update-sitter-profile.dto';
+import {
+  sitterProfileIncludeForCreateOrUpdate,
+  sitterProfileIncludeForList,
+  sitterProfileIncludeWithUserPublic,
+} from './sitter-profile.prisma';
 
 @Injectable()
 export class SitterProfileService {
@@ -18,20 +28,14 @@ export class SitterProfileService {
       throw new ConflictException('Jūs jau turite priežiūrėtojo profilį');
     }
 
+    const data: Prisma.SitterProfileUncheckedCreateInput = {
+      userId,
+      ...dto,
+    };
+
     return this.prisma.sitterProfile.create({
-      data: {
-        userId,
-        ...dto,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
+      data,
+      include: sitterProfileIncludeForCreateOrUpdate,
     });
   }
 
@@ -39,17 +43,7 @@ export class SitterProfileService {
   async getMyProfile(userId: string) {
     const profile = await this.prisma.sitterProfile.findUnique({
       where: { userId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            avatar: true,
-          },
-        },
-      },
+      include: sitterProfileIncludeWithUserPublic,
     });
 
     if (!profile) {
@@ -63,17 +57,7 @@ export class SitterProfileService {
   async getById(id: string) {
     const profile = await this.prisma.sitterProfile.findUnique({
       where: { id },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            avatar: true,
-          },
-        },
-      },
+      include: sitterProfileIncludeWithUserPublic,
     });
 
     if (!profile) {
@@ -90,7 +74,7 @@ export class SitterProfileService {
     maxRate?: number;
     minRating?: number;
   }) {
-    const where: any = {};
+    const where: Prisma.SitterProfileWhereInput = {};
 
     if (filters?.city) {
       where.city = {
@@ -100,32 +84,23 @@ export class SitterProfileService {
     }
 
     if (filters?.minRate !== undefined || filters?.maxRate !== undefined) {
-      where.hourlyRate = {};
+      const hourlyRate: Prisma.IntFilter = {};
       if (filters.minRate !== undefined) {
-        where.hourlyRate.gte = filters.minRate;
+        hourlyRate.gte = filters.minRate;
       }
       if (filters.maxRate !== undefined) {
-        where.hourlyRate.lte = filters.maxRate;
+        hourlyRate.lte = filters.maxRate;
       }
+      where.hourlyRate = hourlyRate;
     }
 
     if (filters?.minRating !== undefined) {
-      where.avgRating = {
-        gte: filters.minRating,
-      };
+      where.avgRating = { gte: filters.minRating };
     }
 
     return this.prisma.sitterProfile.findMany({
       where,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-          },
-        },
-      },
+      include: sitterProfileIncludeForList,
       orderBy: {
         avgRating: 'desc',
       },
@@ -143,18 +118,14 @@ export class SitterProfileService {
       throw new NotFoundException('Neturite priežiūrėtojo profilio');
     }
 
+    const data: Prisma.SitterProfileUncheckedUpdateInput = {
+      ...dto,
+    };
+
     return this.prisma.sitterProfile.update({
       where: { userId },
-      data: dto,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
+      data,
+      include: sitterProfileIncludeForCreateOrUpdate,
     });
   }
 

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../services/auth.service';
+import { getApiErrorMessage } from '../utils/apiError';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -26,8 +27,8 @@ export default function RegisterPage() {
     try {
       await authService.register(formData);
       navigate('/');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Registracija nepavyko');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Registracija nepavyko'));
     } finally {
       setLoading(false);
     }
@@ -171,7 +172,7 @@ export default function RegisterPage() {
                   className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent transition duration-200 text-gray-900 appearance-none cursor-pointer"
                 >
                   <option value="OWNER">🏠 Augintinio savininkas</option>
-                  <option value="SITTER">🐕 Augintinio priežiūrėtojas</option>
+                  <option value="SITTER">🐕 Augintinio prižiūrėtojas</option>
                   <option value="BOTH">🤝 Abu</option>
                 </select>
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">

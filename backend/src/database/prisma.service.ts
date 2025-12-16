@@ -17,7 +17,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   constructor() {
     this.pool = new Pool({ connectionString: process.env.DATABASE_URL });
     const adapter = new PrismaPg(this.pool);
-    
+
     this.prisma = new PrismaClient({
       adapter,
       log: ['query', 'error', 'info', 'warn'],
@@ -88,9 +88,12 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
     return Promise.all(
       models.map((modelKey) => {
-        const model = this[modelKey as keyof PrismaService] as any;
-        if (model && typeof model.deleteMany === 'function') {
-          return model.deleteMany();
+        const model = (this as Record<string, unknown>)[modelKey as string];
+        if (
+          model &&
+          typeof (model as { deleteMany?: unknown }).deleteMany === 'function'
+        ) {
+          return (model as { deleteMany: () => unknown }).deleteMany();
         }
       }),
     );

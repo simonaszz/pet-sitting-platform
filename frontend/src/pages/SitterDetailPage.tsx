@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { sitterService, getServiceLabel } from '../services/sitter.service';
+import { getApiErrorMessage } from '../utils/apiError';
 import type { SitterProfile } from '../services/sitter.service';
 
 export default function SitterDetailPage() {
@@ -10,24 +11,24 @@ export default function SitterDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (id) {
-      loadSitter();
-    }
-  }, [id]);
-
-  const loadSitter = async () => {
+  const loadSitter = useCallback(async () => {
     try {
       setLoading(true);
       const data = await sitterService.getById(id!);
       setSitter(data);
-    } catch (err: any) {
-      setError('Priežiūrėtojas nerastas');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Prižiūrėtojas nerastas'));
       console.error('Failed to load sitter:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    if (id) {
+      loadSitter();
+    }
+  }, [id, loadSitter]);
 
   if (loading) {
     return (
@@ -46,7 +47,7 @@ export default function SitterDetailPage() {
         <div className="text-center">
           <div className="text-6xl mb-4">😕</div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            Priežiūrėtojas nerastas
+            Prižiūrėtojas nerastas
           </h2>
           <p className="text-gray-600 mb-6">{error}</p>
           <button
@@ -87,7 +88,7 @@ export default function SitterDetailPage() {
             </div>
             <div className="flex-1">
               <h1 className="text-4xl font-bold mb-2">
-                {sitter.user?.name || 'Priežiūrėtojas'}
+                {sitter.user?.name || 'Prižiūrėtojas'}
               </h1>
               <p className="text-lg opacity-90">📍 {sitter.city}</p>
               <div className="flex items-center gap-4 mt-4">
