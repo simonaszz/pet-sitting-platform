@@ -29,6 +29,15 @@ export class CreateVisitDto {
   @IsString()
   timeEnd: string; // "17:00"
 
+  @IsArray()
+  @IsOptional()
+  @IsString({ each: true })
+  services?: string[];
+
+  @IsString()
+  @IsOptional()
+  task?: string;
+
   @IsNumber()
   @Min(0)
   totalPrice: number;

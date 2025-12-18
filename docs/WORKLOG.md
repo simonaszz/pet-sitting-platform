@@ -184,9 +184,8 @@ Added a small helper to consistently extract Axios backend messages without usin
 - `frontend/src/pages/MyBookingsPage.tsx`
 - `frontend/src/pages/MyJobsPage.tsx`
 - `frontend/src/pages/MySitterProfilePage.tsx`
-- `frontend/src/pages/PetsPage.tsx`
-- `frontend/src/pages/SitterDetailPage.tsx`
 - `frontend/src/pages/SittersPage.tsx`
+- `frontend/src/pages/SitterDetailPage.tsx`
 
 ### 4) Frontend type alignment (fix “type mismatches”)
 
@@ -231,6 +230,43 @@ Backend returns different user shapes:
 
 - Matches real backend behavior.
 - Avoids lying types or `any`.
+
+### 5) Booking redagavimas su auto-save (product UX)
+
+**What**
+
+Atmestos (`REJECTED`) rezervacijos redagavimas padarytas „visada redaguojamas“ su auto-save:
+
+- Debounce auto-save (~700ms) po pakeitimų
+- Statusas UI: `Saugoma...` / `Išsaugota` / `Klaida`
+- Toast po sėkmingo išsaugojimo (`Išsaugota`)
+- Uždarymas per `Esc` / paspaudus foną / `X` su „flush save“ prieš uždarant, jei yra neišsaugotų pakeitimų
+
+**Where**
+
+- `frontend/src/pages/MyBookingsPage.tsx` (`EditRejectedBookingModal`)
+
+**Why**
+
+- Mažiau „save“ mygtukų ir mažiau klaidų vartotojui.
+- Konsistentiškas UX su profilio ir augintinių redagavimu.
+
+### 6) Top nav: PENDING užsakymų badge (product UX)
+
+**What**
+
+Viršutinėje navigacijoje rodomas `PENDING` užsakymų kiekis (badge):
+
+- Owner: prie `Rezervacijos`
+- Sitter: prie `Mano darbai`
+
+**Where**
+
+- `frontend/src/App.tsx` (`Layout`, `NotificationBadge`)
+
+**Why**
+
+- Greitas signalas, kad yra naujų užsakymų kuriuos reikia peržiūrėti.
 
 ---
 
@@ -278,4 +314,4 @@ Run in `backend/`:
 
 ## Notes
 
-- This document describes refactors and lint/type fixes only. No product functionality was added.
+- This document primarily tracks refactors and lint/type fixes, but also includes a small set of UX/product improvements (auto-save booking editing, nav pending badge).

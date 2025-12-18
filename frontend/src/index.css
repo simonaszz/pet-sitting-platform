@@ -28,3 +28,9 @@ code {
 .animate-slide-in {
   animation: slide-in 0.3s ease-out;
 }
+
+/* React Day Picker - capitalize month names */
+.rdp-month_caption,
+.rdp-caption_label {
+  text-transform: capitalize;
+}

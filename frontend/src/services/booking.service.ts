@@ -22,6 +22,8 @@ export interface Visit {
   date: string;
   timeStart: string;
   timeEnd: string;
+  services?: string[];
+  task?: string;
   status: VisitStatus;
   notesForSitter?: string;
   rejectionReason?: string;
@@ -51,6 +53,8 @@ export interface CreateVisitData {
   date: string;
   timeStart: string;
   timeEnd: string;
+  services?: string[];
+  task?: string;
   totalPrice: number;
   notesForSitter?: string;
 }
@@ -63,6 +67,12 @@ export interface UpdateRejectedVisitData {
   timeEnd?: string;
   totalPrice?: number;
   notesForSitter?: string;
+}
+
+export interface BusySlot {
+  date: string; // YYYY-MM-DD
+  timeStart: string;
+  timeEnd: string;
 }
 
 export const bookingService = {
@@ -81,6 +91,20 @@ export const bookingService = {
   // Gauti mano darbus (kaip sitter)
   async getMyJobs(): Promise<Visit[]> {
     const response = await api.get<Visit[]>('/visits/my-jobs');
+    return response.data;
+  },
+
+  async getBusySlots(params: {
+    sitterProfileId: string;
+    dateFrom: string;
+    dateTo: string;
+  }): Promise<BusySlot[]> {
+    const search = new URLSearchParams({
+      sitterProfileId: params.sitterProfileId,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+    });
+    const response = await api.get<BusySlot[]>(`/visits/busy-slots?${search.toString()}`);
     return response.data;
   },
 

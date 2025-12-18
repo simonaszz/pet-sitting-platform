@@ -82,6 +82,8 @@ Pet-sitting platforma, skirta sujungti gyvūnų savininkus su patikimais priži�
 - ✅ Automatinė kainos kalkuliacija
 - ✅ Cancellation policy
 - ✅ Sitter kalendorius
+- ✅ Atmestos rezervacijos redagavimas su auto-save (debounce) + toast
+- ✅ Viršutinėje navigacijoje rodomas PENDING užsakymų kiekis (badge) owner/sitter puslapiams
 
 ### 💳 Mokėjimai (Stripe)
 - ✅ Payment intents
@@ -107,6 +109,11 @@ Pet-sitting platforma, skirta sujungti gyvūnų savininkus su patikimais priži�
 - ✅ Email notifications
 - ✅ Real-time delivery
 - ✅ Notification preferences
+
+### 🎨 UI/UX (Frontend)
+- ✅ Mobilus meniu (hamburger), užsidaro paspaudus šalia / su ESC
+- ✅ „Tap feedback“ (`active:`) pagrindiniams mygtukams mobile
+- ✅ Visada-redaguojami formų laukai su auto-save profilyje, augintiniuose ir booking redagavime
 
 ### 👨‍💼 Admin Panel
 - ✅ Vartotojų valdymas

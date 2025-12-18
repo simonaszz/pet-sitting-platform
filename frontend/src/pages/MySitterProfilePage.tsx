@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import PageHeader from '../components/PageHeader';
 import { sitterService, AVAILABLE_SERVICES, getServiceLabel } from '../services/sitter.service';
 import { getApiErrorMessage } from '../utils/apiError';
 import type { SitterProfile, CreateSitterProfileData } from '../services/sitter.service';
@@ -85,10 +86,13 @@ export default function MySitterProfilePage() {
 
   if (loading && !profile) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
-          <p className="mt-4 text-gray-600">Kraunama...</p>
+      <div className="min-h-screen bg-gray-50">
+        <PageHeader title="Mano prižiūrėtojo profilis" />
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+            <p className="mt-4 text-gray-600">Kraunama...</p>
+          </div>
         </div>
       </div>
     );
@@ -97,18 +101,19 @@ export default function MySitterProfilePage() {
   if (!editing && profile) {
     return (
       <div className="min-h-screen bg-gray-50">
+        <PageHeader
+          title="Mano prižiūrėtojo profilis"
+          right={(
+            <button
+              onClick={() => setEditing(true)}
+              className="px-4 py-2 bg-white text-purple-700 rounded-lg shadow hover:bg-purple-50 transition font-semibold"
+            >
+              ✏️ Redaguoti
+            </button>
+          )}
+        />
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="bg-white rounded-xl shadow-md p-8">
-            <div className="flex justify-between items-start mb-6">
-              <h1 className="text-3xl font-bold text-gray-900">Mano prižiūrėtojo profilis</h1>
-              <button
-                onClick={() => setEditing(true)}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
-              >
-                ✏️ Redaguoti
-              </button>
-            </div>
-
             <div className="space-y-6">
               <div>
                 <h3 className="text-sm font-semibold text-gray-500 mb-1">MIESTAS</h3>
@@ -171,6 +176,7 @@ export default function MySitterProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <PageHeader title={profile ? 'Redaguoti profilį' : 'Sukurti prižiūrėtojo profilį'} />
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-xl shadow-md p-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-6">

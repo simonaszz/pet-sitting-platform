@@ -7,6 +7,7 @@ interface User {
   name: string;
   role: string;
   phone?: string | null;
+  address?: string | null;
   avatar?: string | null;
   isEmailVerified?: boolean;
 }
@@ -18,6 +19,7 @@ interface AuthState {
   isAuthenticated: boolean;
   
   setAuth: (user: User, accessToken: string, refreshToken: string) => void;
+  updateUser: (user: User) => void;
   clearAuth: () => void;
 }
 
@@ -36,6 +38,12 @@ export const useAuthStore = create<AuthState>()(
           refreshToken,
           isAuthenticated: true,
         }),
+
+      updateUser: (user) =>
+        set((state) => ({
+          ...state,
+          user,
+        })),
 
       clearAuth: () =>
         set({

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import PageHeader from '../components/PageHeader';
 import { sitterService, getServiceLabel } from '../services/sitter.service';
 import type { SitterProfile } from '../services/sitter.service';
 
@@ -39,13 +40,10 @@ export default function SittersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <h1 className="text-4xl font-bold mb-4">🐾 Raskite prižiūrėtoją</h1>
-          <p className="text-lg opacity-90">Patikimi augintinių prižiūrėtojai jūsų mieste</p>
-        </div>
-      </div>
+      <PageHeader
+        title="🐾 Raskite prižiūrėtoją"
+        subtitle="Patikimi augintinių prižiūrėtojai jūsų mieste"
+      />
 
       {/* Filters */}
       <div className="bg-white shadow-md">

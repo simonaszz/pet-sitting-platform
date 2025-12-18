@@ -21,6 +21,7 @@ interface AuthResponse {
     name: string;
     role: string;
     phone?: string | null;
+    address?: string | null;
     avatar?: string | null;
     isEmailVerified?: boolean;
     createdAt?: string;
@@ -35,9 +36,17 @@ interface CurrentUserResponse {
   name: string;
   role: string;
   phone: string | null;
+  address: string | null;
   avatar: string | null;
   isEmailVerified: boolean;
   createdAt: string;
+}
+
+interface UpdateMeData {
+  name: string;
+  phone?: string;
+  address?: string;
+  avatar?: string;
 }
 
 export const authService = {
@@ -63,6 +72,12 @@ export const authService = {
 
   async getCurrentUser() {
     const response = await api.get<CurrentUserResponse>('/auth/me');
+    return response.data;
+  },
+
+  async updateMe(data: UpdateMeData) {
+    const response = await api.patch<CurrentUserResponse>('/auth/me', data);
+    useAuthStore.getState().updateUser(response.data);
     return response.data;
   },
 

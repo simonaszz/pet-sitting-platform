@@ -7,6 +7,8 @@ import {
   Param,
   Delete,
   UseGuards,
+  Query,
+  BadRequestException,
 } from '@nestjs/common';
 import { VisitService } from './visit.service';
 import { CreateVisitDto } from './dto/create-visit.dto';
@@ -41,6 +43,24 @@ export class VisitController {
   @Get('my-jobs')
   findMyJobs(@CurrentUser() user: CurrentUserType) {
     return this.visitService.findMyVisitsAsSitter(user.id);
+  }
+
+  // GET /visits/busy-slots?sitterProfileId=...&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
+  @Get('busy-slots')
+  getBusySlots(
+    @Query('sitterProfileId') sitterProfileId: string,
+    @Query('dateFrom') dateFrom: string,
+    @Query('dateTo') dateTo: string,
+  ) {
+    if (!sitterProfileId || !dateFrom || !dateTo) {
+      throw new BadRequestException('Trūksta užklausos parametrų');
+    }
+
+    return this.visitService.getBusySlots({
+      sitterProfileId,
+      dateFrom,
+      dateTo,
+    });
   }
 
   // PATCH /visits/:id/status - Atnaujinti statusą (sitter)

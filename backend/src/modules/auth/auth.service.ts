@@ -10,6 +10,8 @@ import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { UpdateMeDto } from './dto/update-me.dto';
+import type { CurrentUser as CurrentUserType } from '../../common/types/current-user.type';
 
 @Injectable()
 export class AuthService {
@@ -54,9 +56,43 @@ export class AuthService {
         email: user.email,
         name: user.name,
         role: user.role,
+        phone: user.phone,
+        address: user.address,
+        avatar: user.avatar,
       },
       ...tokens,
     };
+  }
+
+  async updateMe(userId: string, dto: UpdateMeDto): Promise<CurrentUserType> {
+    const nextName = dto.name !== undefined ? dto.name.trim() : undefined;
+    const nextPhone = dto.phone !== undefined ? dto.phone.trim() : undefined;
+    const nextAddress =
+      dto.address !== undefined ? dto.address.trim() : undefined;
+    const nextAvatar = dto.avatar !== undefined ? dto.avatar.trim() : undefined;
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(nextName !== undefined ? { name: nextName } : {}),
+        ...(nextPhone !== undefined ? { phone: nextPhone || null } : {}),
+        ...(nextAddress !== undefined ? { address: nextAddress || null } : {}),
+        ...(nextAvatar !== undefined ? { avatar: nextAvatar || null } : {}),
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        phone: true,
+        address: true,
+        avatar: true,
+        isEmailVerified: true,
+        createdAt: true,
+      },
+    });
+
+    return updated;
   }
 
   async login(dto: LoginDto): Promise<AuthResponseDto> {
@@ -89,6 +125,9 @@ export class AuthService {
         email: user.email,
         name: user.name,
         role: user.role,
+        phone: user.phone,
+        address: user.address,
+        avatar: user.avatar,
       },
       ...tokens,
     };

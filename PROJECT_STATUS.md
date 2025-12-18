@@ -1,6 +1,6 @@
 # 📊 Pet-Sitting Platform - Project Status
 
-**Paskutinis atnaujinimas:** 2025-12-10
+**Paskutinis atnaujinimas:** 2025-12-18
 
 ---
 
@@ -76,6 +76,13 @@
 ### Etapas 1: Authentication (IN PROGRESS)
 
 **Kitas žingsnis:** Sukurti Auth modulį
+
+---
+
+## 🆕 Recent UX updates (Frontend)
+
+- ✅ Atmestos (`REJECTED`) rezervacijos redagavimas su auto-save (debounce) + toast.
+- ✅ Viršutinėje navigacijoje rodomas `PENDING` užsakymų kiekis (badge) owner (`Rezervacijos`) ir sitter (`Mano darbai`) vartotojams (desktop + mobile).
 
 ---
 

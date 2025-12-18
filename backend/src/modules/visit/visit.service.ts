@@ -18,6 +18,90 @@ import {
 export class VisitService {
   constructor(private prisma: PrismaService) {}
 
+  private parseTimeToMinutes(time: string) {
+    const [hoursPart, minutesPart] = time
+      .split(':')
+      .map((timePart) => Number(timePart));
+    if (!Number.isFinite(hoursPart) || !Number.isFinite(minutesPart)) {
+      return NaN;
+    }
+    return hoursPart * 60 + minutesPart;
+  }
+
+  private parseDateToUtcStart(date: string) {
+    return new Date(`${date}T00:00:00.000Z`);
+  }
+
+  private getUtcDayBounds(date: string) {
+    const start = this.parseDateToUtcStart(date);
+    const endExclusive = new Date(start);
+    endExclusive.setUTCDate(start.getUTCDate() + 1);
+    return { start, endExclusive };
+  }
+
+  private isOverlapping(
+    a: { timeStart: string; timeEnd: string },
+    b: { timeStart: string; timeEnd: string },
+  ) {
+    const aStart = this.parseTimeToMinutes(a.timeStart);
+    const aEnd = this.parseTimeToMinutes(a.timeEnd);
+    const bStart = this.parseTimeToMinutes(b.timeStart);
+    const bEnd = this.parseTimeToMinutes(b.timeEnd);
+
+    if (
+      !Number.isFinite(aStart) ||
+      !Number.isFinite(aEnd) ||
+      !Number.isFinite(bStart) ||
+      !Number.isFinite(bEnd)
+    ) {
+      return false;
+    }
+
+    return aStart < bEnd && aEnd > bStart;
+  }
+
+  private async assertSitterTimeSlotAvailable(params: {
+    sitterProfileId: string;
+    date: string;
+    timeStart: string;
+    timeEnd: string;
+    excludeVisitId?: string;
+  }) {
+    const { start, endExclusive } = this.getUtcDayBounds(params.date);
+
+    const existing = await this.prisma.visit.findMany({
+      where: {
+        sitterId: params.sitterProfileId,
+        date: {
+          gte: start,
+          lt: endExclusive,
+        },
+        status: {
+          in: [VisitStatus.PENDING, VisitStatus.ACCEPTED, VisitStatus.PAID],
+        },
+        ...(params.excludeVisitId
+          ? { NOT: { id: params.excludeVisitId } }
+          : {}),
+      },
+      select: {
+        id: true,
+        timeStart: true,
+        timeEnd: true,
+      },
+    });
+
+    for (const visit of existing) {
+      if (
+        this.isOverlapping(
+          { timeStart: params.timeStart, timeEnd: params.timeEnd },
+          { timeStart: visit.timeStart, timeEnd: visit.timeEnd },
+        )
+      ) {
+        throw new BadRequestException('Pasirinktas laikas jau užimtas');
+      }
+    }
+  }
+
   private mapVisitPets(visit: Record<string, unknown>) {
     const visitPets = visit.visitPets;
 
@@ -42,6 +126,13 @@ export class VisitService {
       dto.sitterProfileId,
     );
 
+    await this.assertSitterTimeSlotAvailable({
+      sitterProfileId: dto.sitterProfileId,
+      date: dto.date,
+      timeStart: dto.timeStart,
+      timeEnd: dto.timeEnd,
+    });
+
     // Sukurti visit
     const created = await this.prisma.visit.create({
       data: {
@@ -49,9 +140,11 @@ export class VisitService {
         sitterId: dto.sitterProfileId,
         sitterUserId,
         address: dto.address,
-        date: new Date(dto.date),
+        date: this.parseDateToUtcStart(dto.date),
         timeStart: dto.timeStart,
         timeEnd: dto.timeEnd,
+        services: dto.services ?? [],
+        task: dto.task,
         totalPrice: dto.totalPrice,
         notesForSitter: dto.notesForSitter,
         status: 'PENDING',
@@ -120,6 +213,42 @@ export class VisitService {
     return this.mapVisitPets(updated);
   }
 
+  async getBusySlots(params: {
+    sitterProfileId: string;
+    dateFrom: string;
+    dateTo: string;
+  }) {
+    const fromStart = this.parseDateToUtcStart(params.dateFrom);
+    const toStart = this.parseDateToUtcStart(params.dateTo);
+    const endExclusive = new Date(toStart);
+    endExclusive.setUTCDate(toStart.getUTCDate() + 1);
+
+    const visits = await this.prisma.visit.findMany({
+      where: {
+        sitterId: params.sitterProfileId,
+        date: {
+          gte: fromStart,
+          lt: endExclusive,
+        },
+        status: {
+          in: [VisitStatus.PENDING, VisitStatus.ACCEPTED, VisitStatus.PAID],
+        },
+      },
+      select: {
+        date: true,
+        timeStart: true,
+        timeEnd: true,
+      },
+      orderBy: [{ date: 'asc' }],
+    });
+
+    return visits.map((visitSlot) => ({
+      date: visitSlot.date.toISOString().slice(0, 10),
+      timeStart: visitSlot.timeStart,
+      timeEnd: visitSlot.timeEnd,
+    }));
+  }
+
   async updateRejected(
     visitId: string,
     ownerId: string,
@@ -154,11 +283,25 @@ export class VisitService {
       await this.assertPetsOwnedByOwner(ownerId, dto.petIds);
     }
 
+    const nextDate = dto.date
+      ? dto.date
+      : visit.date.toISOString().slice(0, 10);
+    const nextTimeStart = dto.timeStart ? dto.timeStart : visit.timeStart;
+    const nextTimeEnd = dto.timeEnd ? dto.timeEnd : visit.timeEnd;
+
+    await this.assertSitterTimeSlotAvailable({
+      sitterProfileId: visit.sitterId,
+      date: nextDate,
+      timeStart: nextTimeStart,
+      timeEnd: nextTimeEnd,
+      excludeVisitId: visitId,
+    });
+
     const updated = await this.prisma.visit.update({
       where: { id: visitId },
       data: {
         address: dto.address,
-        date: dto.date ? new Date(dto.date) : undefined,
+        date: dto.date ? this.parseDateToUtcStart(dto.date) : undefined,
         timeStart: dto.timeStart,
         timeEnd: dto.timeEnd,
         totalPrice:

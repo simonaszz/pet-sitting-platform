@@ -1,19 +1,18 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import PageHeader from '../components/PageHeader';
 import { bookingService, getStatusLabel, getStatusColor } from '../services/booking.service';
 import { petService } from '../services/pet.service';
-import { sitterService } from '../services/sitter.service';
 import { useToast } from '../hooks/useToast';
 import { getApiErrorMessage } from '../utils/apiError';
 import type { Visit } from '../services/booking.service';
 import type { Pet } from '../services/pet.service';
-import type { SitterProfile } from '../services/sitter.service';
 
 export default function MyBookingsPage() {
+  const navigate = useNavigate();
   const [bookings, setBookings] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showModal, setShowModal] = useState(false);
   const [editingBooking, setEditingBooking] = useState<Visit | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const toast = useToast();
@@ -66,13 +65,13 @@ export default function MyBookingsPage() {
 
   useEffect(() => {
     if (prefillSitterProfileId) {
-      setShowModal(true);
+      navigate(`/bookings/new?sitterProfileId=${encodeURIComponent(prefillSitterProfileId)}`);
 
-      const next = new URLSearchParams(searchParams);
-      next.delete('sitterProfileId');
-      setSearchParams(next, { replace: true });
+      const nextSearchParams = new URLSearchParams(searchParams);
+      nextSearchParams.delete('sitterProfileId');
+      setSearchParams(nextSearchParams, { replace: true });
     }
-  }, [prefillSitterProfileId, searchParams, setSearchParams]);
+  }, [navigate, prefillSitterProfileId, searchParams, setSearchParams]);
 
   const handleCancel = async (id: string) => {
     if (!confirm('Ar tikrai norite atšaukti šią rezervaciją?')) return;
@@ -112,20 +111,17 @@ export default function MyBookingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold text-gray-900">📅 Mano rezervacijos</h1>
-            <button
-              onClick={() => setShowModal(true)}
-              className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition duration-200 font-semibold"
-            >
-              + Nauja rezervacija
-            </button>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title="📅 Mano rezervacijos"
+        right={(
+          <button
+            onClick={() => navigate('/bookings/new')}
+            className="px-4 py-2 bg-white text-purple-700 rounded-lg shadow hover:bg-purple-50 active:bg-purple-100 active:scale-[0.98] active:opacity-90 transition duration-200 font-semibold"
+          >
+            + Nauja rezervacija
+          </button>
+        )}
+      />
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -149,8 +145,8 @@ export default function MyBookingsPage() {
               Sukurkite pirmąją rezervaciją!
             </p>
             <button
-              onClick={() => setShowModal(true)}
-              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition duration-200 font-semibold"
+              onClick={() => navigate('/bookings/new')}
+              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 active:opacity-90 active:scale-[0.98] transition duration-200 font-semibold"
             >
               Sukurti rezervaciją
             </button>
@@ -171,32 +167,10 @@ export default function MyBookingsPage() {
         )}
       </div>
 
-      {/* Create Booking Modal */}
-      {showModal && (
-        <CreateBookingModal
-          onClose={() => {
-            setShowModal(false);
-            const next = new URLSearchParams(searchParams);
-            next.delete('sitterProfileId');
-            setSearchParams(next, { replace: true });
-          }}
-          onSuccess={() => {
-            setShowModal(false);
-            loadBookings({ silent: true });
-
-            const next = new URLSearchParams(searchParams);
-            next.delete('sitterProfileId');
-            setSearchParams(next, { replace: true });
-          }}
-          prefillSitterProfileId={prefillSitterProfileId}
-        />
-      )}
-
       {editingBooking && (
         <EditRejectedBookingModal
           booking={editingBooking}
-          onClose={() => setEditingBooking(null)}
-          onSuccess={() => {
+          onClose={() => {
             setEditingBooking(null);
             loadBookings({ silent: true });
           }}
@@ -244,6 +218,15 @@ function BookingCard({
   const canCancel = booking.status === 'PENDING' || booking.status === 'ACCEPTED';
   const canEditRejected = booking.status === 'REJECTED';
 
+  const servicesLabel = (booking.services ?? [])
+    .map((service) => {
+      if (service === 'FEEDING') return 'Pamaitinti';
+      if (service === 'LITTER') return 'Kraikas';
+      if (service === 'WALKING') return 'Pavedžioti';
+      return service;
+    })
+    .join(', ');
+
   return (
     <div className="bg-white rounded-xl shadow-md p-6">
       <div className="flex justify-between items-start mb-4">
@@ -256,13 +239,13 @@ function BookingCard({
               {getStatusLabel(booking.status)}
             </span>
           </div>
-          <p className="text-gray-600">🐾 Augintinys: {petsLabel}</p>
+          <p className="text-gray-600">🐾 Augintinis: {petsLabel}</p>
           <p className="text-gray-600">📍 Adresas: {booking.address}</p>
         </div>
         {canCancel && (
           <button
             onClick={() => onCancel(booking.id)}
-            className="text-red-500 hover:text-red-700 transition text-sm font-semibold"
+            className="text-red-500 hover:text-red-700 active:text-red-800 transition text-sm font-semibold"
           >
             Atšaukti
           </button>
@@ -283,6 +266,17 @@ function BookingCard({
           <p className="font-semibold">€{booking.totalPrice}</p>
         </div>
       </div>
+
+      {(booking.task || servicesLabel) && (
+        <div className="mt-4 pt-4 border-t">
+          <p className="text-sm text-gray-500">Vizito užduotis:</p>
+          {booking.task ? (
+            <p className="text-gray-700 whitespace-pre-wrap">{booking.task}</p>
+          ) : (
+            <p className="text-gray-700">{servicesLabel}</p>
+          )}
+        </div>
+      )}
 
       <div className="mt-4 pt-4 border-t">
         <p className="text-sm text-gray-500">Pateikta:</p>
@@ -311,28 +305,32 @@ function BookingCard({
       )}
 
       {canEditRejected && (
-        <div className="mt-4 pt-4 border-t flex gap-3">
-          <button
-            type="button"
-            onClick={() => onEditRejected(booking)}
-            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-semibold"
-          >
-            Redaguoti
-          </button>
-          <button
-            type="button"
-            onClick={() => onResubmit(booking.id)}
-            className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-semibold"
-          >
-            Pateikti iš naujo
-          </button>
-          <button
-            type="button"
-            onClick={() => onDeleteRejected(booking.id)}
-            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold"
-          >
-            Ištrinti
-          </button>
+        <div className="mt-4 pt-4 border-t">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => onEditRejected(booking)}
+              className="w-full sm:flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] active:opacity-90 transition font-semibold"
+            >
+              Redaguoti
+            </button>
+            <div className="w-full sm:flex-1 flex gap-3">
+              <button
+                type="button"
+                onClick={() => onResubmit(booking.id)}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 active:bg-green-800 active:scale-[0.98] active:opacity-90 transition font-semibold"
+              >
+                Pateikti iš naujo
+              </button>
+              <button
+                type="button"
+                onClick={() => onDeleteRejected(booking.id)}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 active:bg-red-800 active:scale-[0.98] active:opacity-90 transition font-semibold"
+              >
+                Ištrinti
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -342,18 +340,23 @@ function BookingCard({
 function EditRejectedBookingModal({
   booking,
   onClose,
-  onSuccess,
 }: {
   booking: Visit;
   onClose: () => void;
-  onSuccess: () => void;
 }) {
   const [pets, setPets] = useState<Pet[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const toast = useToast();
 
-  const initialPetIds = booking.pets?.map((pet) => pet.id) ?? [];
+  const hasUserInteractedRef = useRef(false);
+  const lastSavedToastAtRef = useRef(0);
+  const savedStatusTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const lastSavedSnapshotRef = useRef<string>('');
+  const autoSaveDebounceTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  const initialPetIds = useMemo(() => booking.pets?.map((pet) => pet.id) ?? [], [booking.pets]);
   const initialDate = booking.date ? booking.date.slice(0, 10) : '';
   const [isDateToManuallyEdited, setIsDateToManuallyEdited] = useState(false);
   const [formData, setFormData] = useState({
@@ -368,9 +371,9 @@ function EditRejectedBookingModal({
   });
 
   const parseTimeToMinutes = (time: string) => {
-    const [hh, mm] = time.split(':').map((n) => Number(n));
-    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return NaN;
-    return hh * 60 + mm;
+    const [hoursPart, minutesPart] = time.split(':').map((part) => Number(part));
+    if (!Number.isFinite(hoursPart) || !Number.isFinite(minutesPart)) return NaN;
+    return hoursPart * 60 + minutesPart;
   };
 
   const parseDateToUtc = (date: string) => {
@@ -416,6 +419,33 @@ function EditRejectedBookingModal({
   const dateError = getDateError();
   const daysCount = getDaysCount();
 
+  const getSnapshot = useCallback(
+    (data: typeof formData) =>
+      JSON.stringify({
+        petIds: [...data.petIds].sort(),
+        address: data.address,
+        dateFrom: data.dateFrom,
+        dateTo: data.dateTo,
+        timeStart: data.timeStart,
+        timeEnd: data.timeEnd,
+        totalPrice: data.totalPrice,
+        notesForSitter: data.notesForSitter,
+      }),
+    [],
+  );
+
+  const snapshotNow = getSnapshot(formData);
+  const unchanged = snapshotNow === lastSavedSnapshotRef.current;
+  const canAutoSave =
+    formData.petIds.length > 0 &&
+    Boolean(formData.address.trim()) &&
+    Boolean(formData.dateFrom) &&
+    Boolean(formData.dateTo) &&
+    Boolean(formData.timeStart) &&
+    Boolean(formData.timeEnd) &&
+    !timeError &&
+    !dateError;
+
   useEffect(() => {
     const loadPets = async () => {
       try {
@@ -429,61 +459,143 @@ function EditRejectedBookingModal({
     void loadPets();
   }, []);
 
-  const handleSubmit = async (submitEvent: React.FormEvent) => {
-    submitEvent.preventDefault();
-    setError('');
+  useEffect(() => {
+    lastSavedSnapshotRef.current = getSnapshot({
+      petIds: initialPetIds,
+      address: booking.address ?? '',
+      dateFrom: initialDate,
+      dateTo: initialDate,
+      timeStart: booking.timeStart ?? '09:00',
+      timeEnd: booking.timeEnd ?? '17:00',
+      totalPrice: typeof booking.totalPrice === 'number' ? booking.totalPrice : 0,
+      notesForSitter: booking.notesForSitter ?? '',
+    });
+  }, [booking.address, booking.notesForSitter, booking.timeEnd, booking.timeStart, booking.totalPrice, getSnapshot, initialDate, initialPetIds]);
 
-    if (formData.petIds.length === 0) {
-      const errorMsg = 'Pasirinkite bent vieną augintinį';
-      setError(errorMsg);
-      toast.error(errorMsg);
-      return;
-    }
-
-    if (timeError) {
-      setError(timeError);
-      toast.error(timeError);
-      return;
-    }
-
-    if (dateError) {
-      setError(dateError);
-      toast.error(dateError);
-      return;
-    }
-
-    try {
+  const saveNow = useCallback(
+    async (payload: typeof formData) => {
       setLoading(true);
-      await bookingService.updateRejectedBooking(booking.id, {
-        petIds: formData.petIds,
-        address: formData.address,
-        date: formData.dateFrom,
-        timeStart: formData.timeStart,
-        timeEnd: formData.timeEnd,
-        totalPrice: formData.totalPrice,
-        notesForSitter: formData.notesForSitter || undefined,
-      });
-      toast.success('Rezervacija atnaujinta');
-      onSuccess();
-    } catch (err: unknown) {
-      const msg = getApiErrorMessage(err, 'Nepavyko atnaujinti rezervacijos');
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setLoading(false);
+      setError('');
+
+      try {
+        await bookingService.updateRejectedBooking(booking.id, {
+          petIds: payload.petIds,
+          address: payload.address,
+          date: payload.dateFrom,
+          timeStart: payload.timeStart,
+          timeEnd: payload.timeEnd,
+          totalPrice: payload.totalPrice,
+          notesForSitter: payload.notesForSitter || undefined,
+        });
+
+        lastSavedSnapshotRef.current = getSnapshot(payload);
+        setSaveStatus('saved');
+
+        if (savedStatusTimerRef.current) {
+          window.clearTimeout(savedStatusTimerRef.current);
+        }
+        savedStatusTimerRef.current = window.setTimeout(() => {
+          setSaveStatus('idle');
+        }, 2500);
+
+        const now = Date.now();
+        if (now - lastSavedToastAtRef.current > 1500) {
+          toast.success('Išsaugota');
+          lastSavedToastAtRef.current = now;
+        }
+      } catch (err: unknown) {
+        setSaveStatus('error');
+        const msg = getApiErrorMessage(err, 'Nepavyko išsaugoti rezervacijos');
+        setError(msg);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [booking.id, getSnapshot, toast],
+  );
+
+  const requestClose = useCallback(() => {
+    if (loading) return;
+    if (hasUserInteractedRef.current && canAutoSave && !unchanged) {
+      if (autoSaveDebounceTimerRef.current) {
+        window.clearTimeout(autoSaveDebounceTimerRef.current);
+        autoSaveDebounceTimerRef.current = null;
+      }
+
+      void (async () => {
+        try {
+          await saveNow(formData);
+          onClose();
+        } catch {
+          // keep modal open, error is shown
+        }
+      })();
+      return;
     }
+
+    onClose();
+  }, [canAutoSave, formData, loading, onClose, saveNow, unchanged]);
+
+  useEffect(() => {
+    const onKeyDown = (keyEvent: KeyboardEvent) => {
+      if (keyEvent.key === 'Escape') {
+        requestClose();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [requestClose]);
+
+  useEffect(() => {
+    if (!hasUserInteractedRef.current) return;
+    if (!canAutoSave) return;
+    if (unchanged) return;
+
+    const timer = window.setTimeout(() => {
+      void saveNow(formData);
+    }, 700);
+    autoSaveDebounceTimerRef.current = timer;
+
+    return () => window.clearTimeout(timer);
+  }, [canAutoSave, formData, saveNow, unchanged]);
+
+  const markDirty = () => {
+    hasUserInteractedRef.current = true;
+    if (savedStatusTimerRef.current) {
+      window.clearTimeout(savedStatusTimerRef.current);
+      savedStatusTimerRef.current = null;
+    }
+    setSaveStatus('saving');
+    setError('');
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+      onMouseDown={(mouseEvent) => {
+        if (mouseEvent.target === mouseEvent.currentTarget) {
+          requestClose();
+        }
+      }}
+    >
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Redaguoti rezervaciją</h2>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Redaguoti rezervaciją</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                {!unchanged && saveStatus === 'saving' && 'Saugoma...'}
+                {!unchanged && saveStatus === 'saved' && 'Išsaugota'}
+                {saveStatus === 'error' && 'Klaida'}
+              </p>
+            </div>
             <button
               type="button"
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition"
+              onClick={requestClose}
+              disabled={loading}
+              className="text-gray-400 hover:text-gray-600 active:text-gray-700 transition disabled:opacity-50"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -491,7 +603,7 @@ function EditRejectedBookingModal({
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={(submitEvent) => submitEvent.preventDefault()} className="space-y-4">
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                 <p className="text-sm text-red-800">{error}</p>
@@ -500,7 +612,7 @@ function EditRejectedBookingModal({
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Augintinys *
+                Augintinis *
               </label>
               <div className="space-y-2">
                 {pets.map((pet) => {
@@ -510,7 +622,9 @@ function EditRejectedBookingModal({
                       <input
                         type="checkbox"
                         checked={checked}
+                        disabled={loading}
                         onChange={(changeEvent) => {
+                          markDirty();
                           const nextChecked = changeEvent.target.checked;
                           setFormData((prev) => ({
                             ...prev,
@@ -535,8 +649,12 @@ function EditRejectedBookingModal({
               <input
                 type="text"
                 required
+                disabled={loading}
                 value={formData.address}
-                onChange={(changeEvent) => setFormData({ ...formData, address: changeEvent.target.value })}
+                onChange={(changeEvent) => {
+                  markDirty();
+                  setFormData({ ...formData, address: changeEvent.target.value });
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               />
             </div>
@@ -548,8 +666,10 @@ function EditRejectedBookingModal({
               <input
                 type="date"
                 required
+                disabled={loading}
                 value={formData.dateFrom}
                 onChange={(changeEvent) => {
+                  markDirty();
                   const nextDateFrom = changeEvent.target.value;
                   setIsDateToManuallyEdited(false);
                   setFormData((prev) => ({
@@ -569,8 +689,10 @@ function EditRejectedBookingModal({
               <input
                 type="date"
                 required
+                disabled={loading}
                 value={formData.dateTo}
                 onChange={(changeEvent) => {
+                  markDirty();
                   setIsDateToManuallyEdited(true);
                   setFormData({ ...formData, dateTo: changeEvent.target.value });
                 }}
@@ -587,8 +709,12 @@ function EditRejectedBookingModal({
                 <input
                   type="time"
                   required
+                  disabled={loading}
                   value={formData.timeStart}
-                  onChange={(changeEvent) => setFormData({ ...formData, timeStart: changeEvent.target.value })}
+                  onChange={(changeEvent) => {
+                    markDirty();
+                    setFormData({ ...formData, timeStart: changeEvent.target.value });
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
@@ -599,8 +725,12 @@ function EditRejectedBookingModal({
                 <input
                   type="time"
                   required
+                  disabled={loading}
                   value={formData.timeEnd}
-                  onChange={(changeEvent) => setFormData({ ...formData, timeEnd: changeEvent.target.value })}
+                  onChange={(changeEvent) => {
+                    markDirty();
+                    setFormData({ ...formData, timeEnd: changeEvent.target.value });
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
               </div>
@@ -627,8 +757,10 @@ function EditRejectedBookingModal({
                 min="0"
                 step="0.01"
                 required
+                disabled={loading}
                 value={formData.totalPrice}
                 onChange={(changeEvent) => {
+                  markDirty();
                   setFormData({
                     ...formData,
                     totalPrice: Number.isFinite(Number(changeEvent.target.value))
@@ -646,583 +778,23 @@ function EditRejectedBookingModal({
               </label>
               <textarea
                 rows={3}
+                disabled={loading}
                 value={formData.notesForSitter}
-                onChange={(changeEvent) => setFormData({ ...formData, notesForSitter: changeEvent.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
-              >
-                Atšaukti
-              </button>
-              <button
-                type="submit"
-                disabled={loading || !!timeError || !!dateError}
-                className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition font-semibold"
-              >
-                {loading ? 'Saugoma...' : 'Išsaugoti'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CreateBookingModal({
-  onClose,
-  onSuccess,
-  prefillSitterProfileId,
-}: {
-  onClose: () => void;
-  onSuccess: () => void;
-  prefillSitterProfileId?: string;
-}) {
-  const navigate = useNavigate();
-  const [pets, setPets] = useState<Pet[]>([]);
-  const [sitters, setSitters] = useState<SitterProfile[]>([]);
-  const [isPriceManuallyEdited, setIsPriceManuallyEdited] = useState(false);
-  const [isSitterSelectorOpen, setIsSitterSelectorOpen] = useState(!prefillSitterProfileId);
-  const today = new Date().toISOString().slice(0, 10);
-  const [formData, setFormData] = useState({
-    petIds: [] as string[],
-    sitterProfileId: prefillSitterProfileId ?? '',
-    address: '',
-    dateFrom: today,
-    dateTo: today,
-    timeStart: '09:00',
-    timeEnd: '17:00',
-    totalPrice: 0,
-    notesForSitter: '',
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const toast = useToast();
-
-  const selectedSitter = sitters.find((s) => s.id === formData.sitterProfileId);
-
-  const parseTimeToMinutes = (time: string) => {
-    const [hh, mm] = time.split(':').map((n) => Number(n));
-    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return NaN;
-    return hh * 60 + mm;
-  };
-
-  const parseDateToUtc = (date: string) => {
-    // date is YYYY-MM-DD
-    return new Date(`${date}T00:00:00.000Z`);
-  };
-
-  const getDaysCount = () => {
-    const from = parseDateToUtc(formData.dateFrom);
-    const to = parseDateToUtc(formData.dateTo);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return 0;
-    const diffDays = Math.floor((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDays >= 0 ? diffDays + 1 : 0;
-  };
-
-  const getDateError = () => {
-    const from = parseDateToUtc(formData.dateFrom);
-    const to = parseDateToUtc(formData.dateTo);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-      return 'Neteisinga data';
-    }
-    if (to.getTime() < from.getTime()) {
-      return 'Data iki turi būti ne ankstesnė nei data nuo';
-    }
-    return '';
-  };
-
-  const getTimeError = () => {
-    const startMinutes = parseTimeToMinutes(formData.timeStart);
-    const endMinutes = parseTimeToMinutes(formData.timeEnd);
-    if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) {
-      return 'Neteisingas laikas';
-    }
-    if (endMinutes <= startMinutes) {
-      return 'Pabaiga turi būti vėliau nei pradžia';
-    }
-    return '';
-  };
-
-  const getSuggestedTotalPrice = () => {
-    if (!selectedSitter) return null;
-    const daysCount = getDaysCount();
-    if (daysCount <= 0) return null;
-    const startMinutes = parseTimeToMinutes(formData.timeStart);
-    const endMinutes = parseTimeToMinutes(formData.timeEnd);
-    if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) return null;
-    const minutes = endMinutes - startMinutes;
-    if (minutes <= 0) return null;
-
-    const hours = minutes / 60;
-    const hourlyRate = Number(selectedSitter.hourlyRate);
-    if (!Number.isFinite(hourlyRate)) return null;
-
-    return Math.round(hourlyRate * hours * daysCount * 100) / 100;
-  };
-
-  const timeError = getTimeError();
-  const dateError = getDateError();
-  const daysCount = getDaysCount();
-  const suggestedTotalPrice = getSuggestedTotalPrice();
-
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [petsData, sittersData] = await Promise.all([
-          petService.getAll(),
-          sitterService.getAll(),
-        ]);
-        setPets(petsData);
-        setSitters(sittersData);
-
-        if (!prefillSitterProfileId && sittersData.length === 1) {
-          setIsSitterSelectorOpen(false);
-        }
-
-        if (prefillSitterProfileId && !sittersData.some((s) => s.id === prefillSitterProfileId)) {
-          setError('Prižiūrėtojas nerastas');
-        }
-
-        setFormData((prev) => {
-          const nextSitterProfileId =
-            prev.sitterProfileId ||
-            prefillSitterProfileId ||
-            (sittersData.length === 1 ? sittersData[0].id : '');
-
-          return {
-            ...prev,
-            sitterProfileId: nextSitterProfileId,
-            petIds: petsData.map((pet) => pet.id),
-          };
-        });
-      } catch {
-        setError('Nepavyko užkrauti duomenų');
-      }
-    };
-
-    try {
-      void loadData();
-    } catch {
-      // no-op
-    }
-  }, [prefillSitterProfileId]);
-
-  useEffect(() => {
-    if (isPriceManuallyEdited) return;
-    if (!suggestedTotalPrice) return;
-    if (timeError) return;
-    if (dateError) return;
-
-    setFormData((prev) => ({
-      ...prev,
-      totalPrice: suggestedTotalPrice,
-    }));
-  }, [isPriceManuallyEdited, suggestedTotalPrice, timeError, dateError]);
-
-  useEffect(() => {
-    if (!prefillSitterProfileId) return;
-    setFormData((prev) => ({
-      ...prev,
-      sitterProfileId: prefillSitterProfileId,
-    }));
-  }, [prefillSitterProfileId]);
-
-  const handleSubmit = async (submitEvent: React.FormEvent) => {
-    submitEvent.preventDefault();
-    setError('');
-    setLoading(true);
-
-    if (formData.petIds.length === 0) {
-      setLoading(false);
-      const errorMsg = 'Pasirinkite bent vieną augintinį';
-      setError(errorMsg);
-      toast.error(errorMsg);
-      return;
-    }
-
-    if (dateError) {
-      setLoading(false);
-      setError(dateError);
-      toast.error(dateError);
-      return;
-    }
-
-    if (timeError) {
-      setLoading(false);
-      setError(timeError);
-      toast.error(timeError);
-      return;
-    }
-
-    if (daysCount <= 0) {
-      setLoading(false);
-      const errorMsg = 'Pasirinkite teisingą datų intervalą';
-      setError(errorMsg);
-      toast.error(errorMsg);
-      return;
-    }
-
-    try {
-      const from = parseDateToUtc(formData.dateFrom);
-
-      const dailyPrice = Math.round((formData.totalPrice / daysCount) * 100) / 100;
-
-      const createPromises: Promise<unknown>[] = [];
-      for (let i = 0; i < daysCount; i += 1) {
-        const date = new Date(from);
-        date.setUTCDate(from.getUTCDate() + i);
-        const dateIso = date.toISOString().slice(0, 10);
-
-        createPromises.push(
-          bookingService.createBooking({
-            sitterProfileId: formData.sitterProfileId,
-            petIds: formData.petIds,
-            address: formData.address,
-            date: dateIso,
-            timeStart: formData.timeStart,
-            timeEnd: formData.timeEnd,
-            totalPrice: dailyPrice,
-            notesForSitter: formData.notesForSitter || undefined,
-          }),
-        );
-      }
-
-      await Promise.all(createPromises);
-      toast.success(`Rezervacija sėkmingai sukurta! (${daysCount} d.)`);
-      onSuccess();
-    } catch (err: unknown) {
-      const errorMsg = getApiErrorMessage(err, 'Nepavyko sukurti rezervacijos');
-      setError(errorMsg);
-      toast.error(errorMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Nauja rezervacija</h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <p className="text-sm text-red-800">{error}</p>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Augintinys *
-              </label>
-              {pets.length > 0 && (
-                <p className="text-xs text-gray-500 mb-2">
-                  Pasirinkta: {formData.petIds.length}
-                </p>
-              )}
-              <div className="space-y-2">
-                {pets.length === 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-500">Neturite augintinių. Pirma pridėkite augintinį.</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        navigate('/pets');
-                      }}
-                      className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold"
-                    >
-                      + Pridėti augintinį
-                    </button>
-                  </div>
-                ) : (
-                  pets.map((pet) => {
-                    const checked = formData.petIds.includes(pet.id);
-                    return (
-                      <label key={pet.id} className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(changeEvent) => {
-                            const nextChecked = changeEvent.target.checked;
-                            setFormData((prev) => ({
-                              ...prev,
-                              petIds: nextChecked
-                                ? Array.from(new Set([...prev.petIds, pet.id]))
-                                : prev.petIds.filter((id) => id !== pet.id),
-                            }));
-                          }}
-                          className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                        />
-                        <span>{pet.name}</span>
-                      </label>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Prižiūrėtojas *
-              </label>
-              {selectedSitter && !isSitterSelectorOpen ? (
-                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">
-                        {selectedSitter.user?.name || 'Prižiūrėtojas'}
-                      </p>
-                      <p className="text-xs text-gray-600">
-                        €{selectedSitter.hourlyRate}/val  {selectedSitter.city}
-                      </p>
-                      {prefillSitterProfileId && (
-                        <p className="text-xs text-gray-500 mt-1">Parinkta iš profilio</p>
-                      )}
-                      {!prefillSitterProfileId && sitters.length === 1 && (
-                        <p className="text-xs text-gray-500 mt-1">Automatiškai parinktas vienintelis atitikmuo</p>
-                      )}
-                    </div>
-                    {sitters.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setIsSitterSelectorOpen(true)}
-                        className="shrink-0 px-3 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 rounded-lg hover:bg-purple-100 transition"
-                      >
-                        Keisti
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <select
-                    required
-                    value={formData.sitterProfileId}
-                    onChange={(changeEvent) => {
-                      setIsPriceManuallyEdited(false);
-                      setFormData({
-                        ...formData,
-                        sitterProfileId: changeEvent.target.value,
-                      });
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  >
-                    <option value="">Pasirinkite prižiūrėtoją</option>
-                    {sitters.map((sitter) => (
-                      <option key={sitter.id} value={sitter.id}>
-                        {sitter.user?.name} - €{sitter.hourlyRate}/val ({sitter.city})
-                      </option>
-                    ))}
-                  </select>
-                  {selectedSitter && sitters.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setIsSitterSelectorOpen(false)}
-                      className="w-full px-3 py-2 text-sm font-semibold text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
-                    >
-                      Palikti pasirinktą
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Adresas *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.address}
-                onChange={(changeEvent) => setFormData({ ...formData, address: changeEvent.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="Gatvė 123, Vilnius"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Data (nuo - iki) *
-              </label>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Nuo</label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.dateFrom}
-                    onChange={(changeEvent) => {
-                      setIsPriceManuallyEdited(false);
-                      setFormData({
-                        ...formData,
-                        dateFrom: changeEvent.target.value,
-                        dateTo: changeEvent.target.value,
-                      });
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Iki</label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.dateTo}
-                    onChange={(changeEvent) => {
-                      setIsPriceManuallyEdited(false);
-                      setFormData({ ...formData, dateTo: changeEvent.target.value });
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
-              {daysCount > 0 && (
-                <p className="text-xs text-gray-500 mt-2">Dienų skaičius: {daysCount}</p>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Pradžia *
-                </label>
-                <input
-                  type="time"
-                  required
-                  value={formData.timeStart}
-                  onChange={(changeEvent) => {
-                    setIsPriceManuallyEdited(false);
-                    setFormData({ ...formData, timeStart: changeEvent.target.value });
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Pabaiga *
-                </label>
-                <input
-                  type="time"
-                  required
-                  value={formData.timeEnd}
-                  onChange={(changeEvent) => {
-                    setIsPriceManuallyEdited(false);
-                    setFormData({ ...formData, timeEnd: changeEvent.target.value });
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-
-            {timeError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <p className="text-sm text-red-800">{timeError}</p>
-              </div>
-            )}
-
-            {dateError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <p className="text-sm text-red-800">{dateError}</p>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Bendra kaina (€) *
-              </label>
-              {suggestedTotalPrice !== null && (
-                <p className="text-xs text-gray-500 mb-2">
-                  Siūloma kaina: €{suggestedTotalPrice}
-                </p>
-              )}
-              <input
-                type="number"
-                required
-                min="0"
-                step="0.5"
-                value={formData.totalPrice}
                 onChange={(changeEvent) => {
-                  setIsPriceManuallyEdited(true);
-                  setFormData({
-                    ...formData,
-                    totalPrice: Number.isFinite(Number(changeEvent.target.value))
-                      ? parseFloat(changeEvent.target.value)
-                      : 0,
-                  });
+                  markDirty();
+                  setFormData({ ...formData, notesForSitter: changeEvent.target.value });
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Pastabos prižiūrėtojui
-              </label>
-              <textarea
-                rows={3}
-                value={formData.notesForSitter}
-                onChange={(changeEvent) => setFormData({ ...formData, notesForSitter: changeEvent.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="Papildoma informacija prižiūrėtojui..."
-              />
-            </div>
-
-            <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-              <p className="text-sm font-semibold text-gray-900 mb-2">Suvestinė</p>
-              <div className="grid grid-cols-2 gap-2 text-xs text-gray-700">
-                <div>
-                  <p className="text-gray-500">Augintiniai</p>
-                  <p className="font-semibold">{formData.petIds.length}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Dienos</p>
-                  <p className="font-semibold">{daysCount > 0 ? daysCount : '-'}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Laikas</p>
-                  <p className="font-semibold">{formData.timeStart} - {formData.timeEnd}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Kaina</p>
-                  <p className="font-semibold">€{formData.totalPrice}</p>
-                </div>
-              </div>
-            </div>
-
             <div className="flex gap-3 pt-4">
               <button
                 type="button"
-                onClick={onClose}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+                onClick={requestClose}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 active:bg-gray-100 active:scale-[0.98] active:opacity-90 transition"
               >
-                Atšaukti
-              </button>
-              <button
-                type="submit"
-                disabled={loading || !!timeError || !!dateError}
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 transition font-semibold"
-              >
-                {loading ? 'Kuriama...' : 'Sukurti'}
+                Uždaryti
               </button>
             </div>
           </form>
@@ -1231,3 +803,4 @@ function CreateBookingModal({
     </div>
   );
 }
+

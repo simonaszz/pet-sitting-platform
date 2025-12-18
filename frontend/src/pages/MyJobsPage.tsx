@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import PageHeader from '../components/PageHeader';
 import { bookingService, getStatusLabel, getStatusColor, VisitStatus } from '../services/booking.service';
 import { useToast } from '../hooks/useToast';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -63,13 +64,10 @@ export default function MyJobsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <h1 className="text-3xl font-bold text-gray-900">💼 Mano darbai</h1>
-          <p className="mt-1 text-gray-600">Rezervacijos, kuriose esu prižiūrėtojas</p>
-        </div>
-      </div>
+      <PageHeader
+        title="💼 Mano darbai"
+        subtitle="Rezervacijos, kuriose esu prižiūrėtojas"
+      />
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -206,7 +204,7 @@ function JobCard({
               {getStatusLabel(job.status)}
             </span>
           </div>
-          <p className="text-gray-600">🐾 Augintinys: {petsLabel}</p>
+          <p className="text-gray-600">🐾 Augintinis: {petsLabel}</p>
           <p className="text-gray-600">📍 Adresas: {job.address}</p>
         </div>
         <div className="text-right">
