@@ -77,6 +77,8 @@ export default function CreateBookingModal({
   const toast = useToast();
   const { user } = useAuthStore();
 
+  const [activeStep, setActiveStep] = useState<1 | 2 | 3>(1);
+
   const [pets, setPets] = useState<Pet[]>([]);
   const [sitters, setSitters] = useState<SitterProfile[]>([]);
   const [isPriceManuallyEdited, setIsPriceManuallyEdited] = useState(false);
@@ -97,6 +99,8 @@ export default function CreateBookingModal({
   );
 
   const [selectedDates, setSelectedDates] = useState<Date[]>([new Date()]);
+
+  const [visitTimeWindow, setVisitTimeWindow] = useState<'morning' | 'day' | 'evening' | 'custom'>('day');
 
   const [newVisitServices, setNewVisitServices] = useState(DEFAULT_INTERVAL_SERVICES);
   const [isNewVisitServicesAdvancedOpen, setIsNewVisitServicesAdvancedOpen] = useState(false);
@@ -129,6 +133,13 @@ export default function CreateBookingModal({
   });
 
   const selectedSitter = sitters.find((sitter) => sitter.id === formData.sitterProfileId);
+
+  const defaultStartTimeForWindow = useMemo(() => {
+    if (visitTimeWindow === 'morning') return '09:00';
+    if (visitTimeWindow === 'day') return '13:00';
+    if (visitTimeWindow === 'evening') return '18:00';
+    return '14:00';
+  }, [visitTimeWindow]);
 
   // Helper functions
   const parseTimeToMinutes = useCallback((time: string) => {
@@ -626,7 +637,7 @@ export default function CreateBookingModal({
     if (!selectedDayIso) return;
     const currentIntervals = getIntervalsForDate(selectedDayIso);
     const durationMinutes = getDurationMinutesForServices(newVisitServices);
-    const defaultStart = '14:00';
+    const defaultStart = defaultStartTimeForWindow;
     const startMinutes = parseTimeToMinutes(defaultStart);
     const nextEnd = Number.isFinite(startMinutes)
       ? formatMinutesToTime(startMinutes + durationMinutes)
@@ -744,13 +755,6 @@ export default function CreateBookingModal({
       [serviceKey]: !prev[serviceKey],
     }));
   };
-
-  const toggleSelectedDayIntervalServices = useCallback((intervalId: string) => {
-    setSelectedDayIntervalServicesOpenById((prev) => ({
-      ...prev,
-      [intervalId]: !prev[intervalId],
-    }));
-  }, []);
 
   const toggleDefaultIntervalServices = useCallback((intervalId: string) => {
     setDefaultIntervalServicesOpenById((prev) => ({
@@ -882,7 +886,7 @@ export default function CreateBookingModal({
   // Interval management
   const addInterval = () => {
     const durationMinutes = getDurationMinutesForServices(newVisitServices);
-    const defaultStart = '14:00';
+    const defaultStart = defaultStartTimeForWindow;
     const startMinutes = parseTimeToMinutes(defaultStart);
     const nextEnd = Number.isFinite(startMinutes)
       ? formatMinutesToTime(startMinutes + durationMinutes)
@@ -1077,15 +1081,139 @@ export default function CreateBookingModal({
   const totalVisitsCount = getTotalVisitsAcrossRange();
   const totalHoursAcrossRange = getTotalHoursAcrossRange();
 
+  const pricePerVisit = useMemo(() => {
+    if (totalVisitsCount <= 0) return 0;
+    return Math.round((formData.totalPrice / totalVisitsCount) * 100) / 100;
+  }, [formData.totalPrice, totalVisitsCount]);
+
+  const step1IsValid = useMemo(() => {
+    return Boolean(formData.sitterProfileId && formData.petIds.length > 0 && formData.address.trim());
+  }, [formData.address, formData.petIds.length, formData.sitterProfileId]);
+
+  const step2IsValid = useMemo(() => {
+    if (!step1IsValid) return false;
+    if (busyLoading) return false;
+    if (dateError) return false;
+    if (intervalsError) return false;
+    if (hasBusyConflict) return false;
+    return true;
+  }, [busyLoading, dateError, hasBusyConflict, intervalsError, step1IsValid]);
+
+  const sitterIsValid = Boolean(formData.sitterProfileId);
+  const petsAreValid = formData.petIds.length > 0;
+  const addressIsValid = Boolean(formData.address.trim());
+  const priceIsValid = Number.isFinite(formData.totalPrice) && formData.totalPrice > 0;
+  const step3IsValid = !isSubmitDisabled;
+
+  const goToStep = useCallback(
+    (nextStep: 1 | 2 | 3) => {
+      if (nextStep === 1) {
+        setActiveStep(1);
+        return;
+      }
+
+      if (nextStep === 2) {
+        if (!step1IsValid) {
+          toast.error('Užpildykite prižiūrėtoją, augintinius ir adresą.');
+          return;
+        }
+        setActiveStep(2);
+        requestAnimationFrame(() => {
+          planningSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        return;
+      }
+
+      if (!step2IsValid) {
+        toast.error('Patikrinkite datas/laikus — yra klaidų arba konfliktų.');
+        return;
+      }
+      setActiveStep(3);
+    },
+    [step1IsValid, step2IsValid, toast],
+  );
+
   const formMainFields = (
     <>
+      <div className="order-0 border border-rose-200 rounded-lg p-3 bg-white">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-gray-900">Rezervacija</p>
+          <p className="text-xs text-gray-600">Žingsnis {activeStep} iš 3</p>
+        </div>
+
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => goToStep(1)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+              activeStep === 1
+                ? 'bg-purple-600 border-purple-600 text-white'
+                : step1IsValid
+                  ? 'bg-green-50 border-green-300 text-green-800 hover:bg-green-100'
+                  : 'bg-white border-rose-200 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            1. Klientas
+          </button>
+          <button
+            type="button"
+            onClick={() => goToStep(2)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+              activeStep === 2
+                ? 'bg-purple-600 border-purple-600 text-white'
+                : step2IsValid
+                  ? 'bg-green-50 border-green-300 text-green-800 hover:bg-green-100'
+                  : 'bg-white border-rose-200 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            2. Datos
+          </button>
+          <button
+            type="button"
+            onClick={() => goToStep(3)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+              activeStep === 3
+                ? 'bg-purple-600 border-purple-600 text-white'
+                : step3IsValid
+                  ? 'bg-green-50 border-green-300 text-green-800 hover:bg-green-100'
+                  : 'bg-white border-rose-200 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            3. Peržiūra
+          </button>
+        </div>
+      </div>
+
       {error && (
         <div className="order-0 bg-red-50 border border-red-200 rounded-lg p-3">
           <p className="text-sm text-red-800">{error}</p>
         </div>
       )}
 
-            <div ref={planningSectionRef} className="order-4 border border-gray-200 rounded-lg p-3 bg-white">
+      <div className={activeStep === 1 ? '' : 'hidden'}>
+        <div className="order-1 border border-rose-200 rounded-lg p-3 bg-white">
+          <p className="text-sm font-semibold text-gray-900 mb-2">Kliento informacija</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-700">
+            <div>
+              <p className="text-gray-500">Vardas</p>
+              <p className="font-semibold">{user?.name ?? '-'}</p>
+            </div>
+            <div>
+              <p className="text-gray-500">El. paštas</p>
+              <p className="font-semibold">{user?.email ?? '-'}</p>
+            </div>
+            <div>
+              <p className="text-gray-500">Telefonas</p>
+              <p className="font-semibold">{user?.phone ?? '-'}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+            <div
+              ref={planningSectionRef}
+              className={`${activeStep === 2 ? '' : 'hidden'} order-4 border ${step2IsValid ? 'border-green-200' : 'border-rose-200'} rounded-lg p-3 bg-white`}
+            >
               <div className="flex items-center justify-between gap-3 mb-3">
                 <p className="text-sm font-semibold text-gray-900">Planavimas</p>
                 <p className="text-xs text-gray-600">
@@ -1106,20 +1234,25 @@ export default function CreateBookingModal({
                 <div>
                   <p className="text-sm font-medium text-gray-800 mb-1">Kalendorius</p>
                   <p className="text-xs text-gray-600 mb-2">Pasirinkta: {daysCount} d.</p>
-                  <div className="flex items-center gap-3 mb-3 text-xs text-gray-600">
-                    <span className="inline-flex items-center gap-1">
-                      <span className="w-3 h-3 rounded-full bg-green-100 border border-green-300" />
-                      Laisva
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <span className="w-3 h-3 rounded-full bg-orange-100 border border-orange-300" />
-                      Dalinai
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <span className="w-3 h-3 rounded-full bg-red-100 border border-red-300" />
-                      Užimta
-                    </span>
-                  </div>
+                  <details className="mb-3">
+                    <summary className="cursor-pointer select-none text-xs font-semibold text-gray-600">
+                      Spalvų paaiškinimas
+                    </summary>
+                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
+                      <span className="inline-flex items-center gap-1">
+                        <span className="w-3 h-3 rounded-full bg-green-100 border border-green-300" />
+                        Laisva
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <span className="w-3 h-3 rounded-full bg-orange-100 border border-orange-300" />
+                        Dalinai
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <span className="w-3 h-3 rounded-full bg-red-100 border border-red-300" />
+                        Užimta
+                      </span>
+                    </div>
+                  </details>
 
                   <DayPicker
                     mode="multiple"
@@ -1184,6 +1317,10 @@ export default function CreateBookingModal({
                               ? 'bg-orange-50 border-orange-200 text-orange-800'
                               : 'bg-green-50 border-green-200 text-green-800';
                         const isSelected = dayInfo.dateIso === selectedDayIso;
+                        const selectedRingClasses =
+                          isSelected && dayInfo.status === 'free'
+                            ? 'ring-2 ring-green-300'
+                            : '';
 
                         return (
                           <button
@@ -1195,7 +1332,7 @@ export default function CreateBookingModal({
                               setSelectedDayIso(dayInfo.dateIso);
                             }}
                             className={`shrink-0 min-w-[150px] border rounded-lg p-2 text-left transition ${statusClasses} ${
-                              isSelected ? 'ring-2 ring-purple-400' : 'hover:opacity-90'
+                              selectedRingClasses ? selectedRingClasses : 'hover:opacity-90'
                             }`}
                           >
                             <div className="flex items-center justify-between gap-2">
@@ -1220,7 +1357,7 @@ export default function CreateBookingModal({
                   )}
 
                   {isPlanningEnabled && selectedDayIso && selectedDayIntervals && (
-                    <div className="mt-4 border-t border-gray-200 pt-4">
+                    <div className="mt-4 border-t border-rose-200 pt-4">
                       <div className="flex items-center justify-between gap-3 mb-2">
                         <p className="text-sm font-semibold text-gray-900">Laikai dienai: {selectedDayIso}</p>
                         <div className="flex items-center gap-2">
@@ -1257,134 +1394,188 @@ export default function CreateBookingModal({
                         </div>
                       </div>
 
-                      <div className="mb-3">
-                        <p className="text-xs font-semibold text-gray-700 mb-1">Vizito tipas (lemia trukmę)</p>
+                      <details className="mb-3 border border-rose-200 rounded-lg p-2 bg-gray-50" open={hasBusyConflict}>
+                        <summary className="cursor-pointer select-none text-xs font-semibold text-gray-700">
+                          Papildomai
+                        </summary>
 
-                        <div className="flex flex-wrap gap-2">
-                          {VISIT_PRESETS.map((presetItem) => {
-                            const isActive = activeNewVisitPresetKey === presetItem.key;
-                            return (
-                              <button
-                                key={presetItem.key}
-                                type="button"
-                                onClick={() => setNewVisitPreset(presetItem.key)}
-                                className={`text-[11px] px-2 py-1 rounded border transition ${
-                                  isActive
-                                    ? 'bg-purple-600 border-purple-600 text-white'
-                                    : 'bg-white border-gray-200 text-gray-800 hover:bg-gray-50'
-                                }`}
-                              >
-                                {presetItem.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        <div className="mt-2 flex items-center justify-between gap-3">
-                          <p className="text-[11px] text-gray-500">
-                            Paslaugos: {formatServicesLabel(newVisitServices)} · Trukmė: {getDurationMinutesForServices(newVisitServices)} min.
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => setIsNewVisitServicesAdvancedOpen((prev) => !prev)}
-                            className="text-[11px] font-semibold text-purple-700 hover:text-purple-800"
-                          >
-                            Keisti paslaugas
-                          </button>
-                        </div>
-
-                        {isNewVisitServicesAdvancedOpen && (
-                          <div className="mt-2 flex flex-wrap gap-3">
-                            <label className="flex items-center gap-2 text-xs text-gray-700">
-                              <input
-                                type="checkbox"
-                                checked={newVisitServices.feeding}
-                                onChange={() => toggleNewVisitService('feeding')}
-                                className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                              />
-                              Pamaitinti
-                            </label>
-                            <label className="flex items-center gap-2 text-xs text-gray-700">
-                              <input
-                                type="checkbox"
-                                checked={newVisitServices.litter}
-                                onChange={() => toggleNewVisitService('litter')}
-                                className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                              />
-                              Kraikas
-                            </label>
-                            <label className="flex items-center gap-2 text-xs text-gray-700">
-                              <input
-                                type="checkbox"
-                                checked={newVisitServices.walking}
-                                onChange={() => toggleNewVisitService('walking')}
-                                className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                              />
-                              Pavedžioti
-                            </label>
-                          </div>
-                        )}
-                        <div className="mt-2">
-                          <label className="block text-[11px] font-semibold text-gray-700 mb-1">Ką reikės padaryti (šablonas naujiems vizitams)</label>
-                          <input
-                            type="text"
-                            value={newVisitTaskTemplate}
-                            onChange={(changeEvent) => setNewVisitTaskTemplate(changeEvent.target.value)}
-                            placeholder="Pvz: Pamaitinti + kraikas, duoti vandens"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                          />
-                          <p className="text-[11px] text-gray-500 mt-1">Jei paliksite tuščią, bus naudojamas automatinis tekstas pagal paslaugas.</p>
-                        </div>
-
-                        {selectedDayBusySlots.length > 0 ? (
-                          <div className="bg-gray-50 border border-gray-200 rounded-lg p-2 mt-3">
-                            <p className="text-xs font-semibold text-gray-700 mb-1">Užimti laikai šiai dienai:</p>
+                        <div className="mt-3">
+                          <div className="mb-3">
+                            <p className="text-xs font-semibold text-gray-700 mb-1">Laiko intervalas</p>
                             <div className="flex flex-wrap gap-2">
-                              {selectedDayBusySlots.map((slot, slotIndex) => (
-                                <span
-                                  key={`${slot.date}-${slot.timeStart}-${slotIndex}`}
-                                  className="text-[11px] px-2 py-1 rounded bg-red-100 border border-red-200 text-red-800"
-                                >
-                                  {slot.timeStart}–{slot.timeEnd}
-                                </span>
-                              ))}
+                              {[
+                                { key: 'morning' as const, label: 'Rytas' },
+                                { key: 'day' as const, label: 'Diena' },
+                                { key: 'evening' as const, label: 'Vakaras' },
+                                { key: 'custom' as const, label: 'Kita' },
+                              ].map((timeWindowOption) => {
+                                const isActive = visitTimeWindow === timeWindowOption.key;
+                                return (
+                                  <button
+                                    key={timeWindowOption.key}
+                                    type="button"
+                                    onClick={() => setVisitTimeWindow(timeWindowOption.key)}
+                                    className={`text-[11px] px-2 py-1 rounded border transition ${
+                                      isActive
+                                        ? 'bg-purple-600 border-purple-600 text-white'
+                                        : 'bg-white border-rose-200 text-gray-800 hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    {timeWindowOption.label}
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
-                        ) : (
-                          <p className="text-xs text-gray-600 mb-3">Šiai dienai užimtų laikų nėra.</p>
-                        )}
-                      </div>
 
-                    {selectedDayFreeIntervals.length > 0 && (
-                      <div className="mb-3">
-                        <p className="text-xs font-semibold text-gray-700 mb-1">Laisvi laikai (pasirinkite vienu paspaudimu):</p>
-                        <div className="flex flex-wrap gap-2">
-                          {selectedDayFreeIntervals
-                            .filter((freeInterval) => freeInterval.endMinutes - freeInterval.startMinutes >= 30)
-                            .slice(0, 10)
-                            .map((freeInterval) => (
+                          <div className="mb-3">
+                            <p className="text-xs font-semibold text-gray-700 mb-1">Vizito tipas (lemia trukmę)</p>
+
+                            <div className="flex flex-wrap gap-2">
+                              {VISIT_PRESETS.map((presetItem) => {
+                                const isActive = activeNewVisitPresetKey === presetItem.key;
+                                return (
+                                  <button
+                                    key={presetItem.key}
+                                    type="button"
+                                    onClick={() => setNewVisitPreset(presetItem.key)}
+                                    className={`text-[11px] px-2 py-1 rounded border transition ${
+                                      isActive
+                                        ? 'bg-purple-600 border-purple-600 text-white'
+                                        : 'bg-white border-rose-200 text-gray-800 hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    {presetItem.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            <div className="mt-2 flex items-center justify-between gap-3">
+                              <p className="text-[11px] text-gray-500">
+                                Paslaugos: {formatServicesLabel(newVisitServices)} · Trukmė: {getDurationMinutesForServices(newVisitServices)} min.
+                              </p>
                               <button
-                                key={`${freeInterval.start}-${freeInterval.end}`}
                                 type="button"
-                                onClick={() =>
-                                  addVisitFromFreeIntervalForSelectedDay(
-                                    freeInterval.startMinutes,
-                                    freeInterval.endMinutes,
-                                  )
-                                }
-                                className="text-[11px] px-2 py-1 rounded bg-green-100 border border-green-200 text-green-900 hover:bg-green-200 transition"
+                                onClick={() => setIsNewVisitServicesAdvancedOpen((prev) => !prev)}
+                                className="text-[11px] font-semibold text-purple-700 hover:text-purple-800"
                               >
-                                {freeInterval.start}–{freeInterval.end}
+                                Keisti paslaugas
                               </button>
-                            ))}
+                            </div>
+
+                            {isNewVisitServicesAdvancedOpen && (
+                              <div className="mt-2 flex flex-wrap gap-3">
+                                <label className="flex items-center gap-2 text-xs text-gray-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={newVisitServices.feeding}
+                                    onChange={() => toggleNewVisitService('feeding')}
+                                    className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
+                                  />
+                                  Pamaitinti
+                                </label>
+                                <label className="flex items-center gap-2 text-xs text-gray-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={newVisitServices.litter}
+                                    onChange={() => toggleNewVisitService('litter')}
+                                    className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
+                                  />
+                                  Kraikas
+                                </label>
+                                <label className="flex items-center gap-2 text-xs text-gray-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={newVisitServices.walking}
+                                    onChange={() => toggleNewVisitService('walking')}
+                                    className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
+                                  />
+                                  Pavedžioti
+                                </label>
+                              </div>
+                            )}
+                            <div className="mt-2">
+                              <label className="block text-[11px] font-semibold text-gray-700 mb-1">Ką reikės padaryti (šablonas naujiems vizitams)</label>
+                              <input
+                                type="text"
+                                value={newVisitTaskTemplate}
+                                onChange={(changeEvent) => setNewVisitTaskTemplate(changeEvent.target.value)}
+                                placeholder="Pvz: Pamaitinti + kraikas, duoti vandens"
+                                className="w-full px-3 py-2 border border-rose-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+                              />
+
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {['Pamaitinti', 'Kraikas', 'Pavedžioti', 'Vanduo'].map((taskTag) => (
+                                  <button
+                                    key={taskTag}
+                                    type="button"
+                                    onClick={() => {
+                                      setNewVisitTaskTemplate((prev) => {
+                                        const trimmed = prev.trim();
+                                        const nextValue = trimmed ? `${trimmed}, ${taskTag}` : taskTag;
+                                        return nextValue;
+                                      });
+                                    }}
+                                    className="text-[11px] px-2 py-1 rounded bg-gray-50 border border-rose-200 text-gray-800 hover:bg-gray-100 transition"
+                                  >
+                                    {taskTag}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-3">
+                            <p className="text-xs font-semibold text-gray-700 mb-1">Užimti laikai šiai dienai:</p>
+                            {selectedDayBusySlots.length > 0 ? (
+                              <div className="flex flex-wrap gap-2">
+                                {selectedDayBusySlots.map((slot, slotIndex) => (
+                                  <span
+                                    key={`${slot.date}-${slot.timeStart}-${slotIndex}`}
+                                    className="text-[11px] px-2 py-1 rounded bg-red-100 border border-red-200 text-red-800"
+                                  >
+                                    {slot.timeStart}–{slot.timeEnd}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-gray-600">Šiai dienai užimtų laikų nėra.</p>
+                            )}
+                          </div>
+
+                          {selectedDayFreeIntervals.length > 0 && (
+                            <div className="mt-3">
+                              <p className="text-xs font-semibold text-gray-700 mb-1">Laisvi laikai (greitas pridėjimas):</p>
+                              <div className="flex flex-wrap gap-2">
+                                {selectedDayFreeIntervals
+                                  .filter((freeInterval) => freeInterval.endMinutes - freeInterval.startMinutes >= 30)
+                                  .slice(0, 10)
+                                  .map((freeInterval) => (
+                                    <button
+                                      key={`${freeInterval.start}-${freeInterval.end}`}
+                                      type="button"
+                                      onClick={() =>
+                                        addVisitFromFreeIntervalForSelectedDay(
+                                          freeInterval.startMinutes,
+                                          freeInterval.endMinutes,
+                                        )
+                                      }
+                                      className="text-[11px] px-2 py-1 rounded bg-green-100 border border-green-200 text-green-900 hover:bg-green-200 transition"
+                                    >
+                                      {freeInterval.start}–{freeInterval.end}
+                                    </button>
+                                  ))}
+                              </div>
+                              <p className="text-[11px] text-gray-500 mt-1">Paspaudus pridedamas {getDurationMinutesForServices(newVisitServices)} min vizitas.</p>
+                            </div>
+                          )}
                         </div>
-                        <p className="text-[11px] text-gray-500 mt-1">Darbo laikas: {WORKING_DAY_START}–{WORKING_DAY_END}. Paspaudus pridedamas {getDurationMinutesForServices(newVisitServices)} min vizitas.</p>
-                      </div>
-                    )}
+                      </details>
 
                     <div className="space-y-2">
                       {selectedDayIntervals.map((interval) => (
-                        <div key={interval.id} className="rounded-lg border border-gray-200 p-2 bg-white">
+                        <div key={interval.id} className="rounded-lg border border-rose-200 p-2 bg-white">
                           <div className="flex items-center gap-2">
                           <input
                             type="time"
@@ -1392,14 +1583,14 @@ export default function CreateBookingModal({
                             onChange={(changeEvent) =>
                               updateIntervalForSelectedDay(interval.id, 'timeStart', changeEvent.target.value)
                             }
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                            className="flex-1 px-3 py-2 border border-rose-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 text-sm"
                           />
                           <span className="text-gray-400">–</span>
                           <input
                             type="time"
                             value={interval.timeEnd}
                             disabled
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                            className="flex-1 px-3 py-2 border border-rose-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 text-sm"
                           />
                           {selectedDayIntervals.length > 1 && (
                             <button
@@ -1419,23 +1610,29 @@ export default function CreateBookingModal({
                             <p className="text-[11px] text-gray-500">
                               {formatServicesLabel(interval.services)} · Trukmė: {getDurationMinutesForServices(interval.services)} min.
                             </p>
-                            <button
-                              type="button"
-                              onClick={() => toggleSelectedDayIntervalServices(interval.id)}
-                              className="text-[11px] font-semibold text-purple-700 hover:text-purple-800"
-                            >
-                              Keisti paslaugas
-                            </button>
                           </div>
 
-                          {Boolean(selectedDayIntervalServicesOpenById[interval.id]) && (
+                          <details
+                            className="mt-2"
+                            open={Boolean(selectedDayIntervalServicesOpenById[interval.id])}
+                            onToggle={(toggleEvent) => {
+                              const detailsElement = toggleEvent.currentTarget;
+                              setSelectedDayIntervalServicesOpenById((prev) => ({
+                                ...prev,
+                                [interval.id]: detailsElement.open,
+                              }));
+                            }}
+                          >
+                            <summary className="cursor-pointer select-none text-[11px] font-semibold text-gray-600">
+                              Papildomai (paslaugos / užduotis)
+                            </summary>
                             <div className="mt-2 flex flex-wrap gap-3">
                               <label className="flex items-center gap-2 text-[11px] text-gray-700">
                                 <input
                                   type="checkbox"
                                   checked={interval.services.feeding}
                                   onChange={() => toggleServiceForSelectedDayInterval(interval.id, 'feeding')}
-                                  className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
                                 />
                                 Pamaitinti
                               </label>
@@ -1444,7 +1641,7 @@ export default function CreateBookingModal({
                                   type="checkbox"
                                   checked={interval.services.litter}
                                   onChange={() => toggleServiceForSelectedDayInterval(interval.id, 'litter')}
-                                  className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
                                 />
                                 Kraikas
                               </label>
@@ -1453,23 +1650,23 @@ export default function CreateBookingModal({
                                   type="checkbox"
                                   checked={interval.services.walking}
                                   onChange={() => toggleServiceForSelectedDayInterval(interval.id, 'walking')}
-                                  className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
                                 />
                                 Pavedžioti
                               </label>
                             </div>
-                          )}
 
-                          <div className="mt-2">
-                            <label className="block text-[11px] font-semibold text-gray-700 mb-1">Ką reikės padaryti</label>
-                            <input
-                              type="text"
-                              value={interval.task}
-                              onChange={(changeEvent) => updateTaskForSelectedDayInterval(interval.id, changeEvent.target.value)}
-                              placeholder="Pvz: pamaitinti, pakeisti kraiką, pavedžioti 30 min"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                            />
-                          </div>
+                            <div className="mt-2">
+                              <label className="block text-[11px] font-semibold text-gray-700 mb-1">Ką reikės padaryti</label>
+                              <input
+                                type="text"
+                                value={interval.task}
+                                onChange={(changeEvent) => updateTaskForSelectedDayInterval(interval.id, changeEvent.target.value)}
+                                placeholder="Pvz: pamaitinti, pakeisti kraiką, pavedžioti 30 min"
+                                className="w-full px-3 py-2 border border-rose-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+                              />
+                            </div>
+                          </details>
                         </div>
                       ))}
                     </div>
@@ -1487,7 +1684,7 @@ export default function CreateBookingModal({
                 )}
 
                 {busyLoading && formData.sitterProfileId && !dateError && (
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  <div className="bg-gray-50 border border-rose-200 rounded-lg p-3">
                     <p className="text-sm text-gray-700">Tikrinamas užimtumas...</p>
                   </div>
                 )}
@@ -1513,7 +1710,7 @@ export default function CreateBookingModal({
               {/* Time Intervals */}
               <div ref={timeIntervalsSectionRef} className="mt-4">
                 <details
-                  className="border border-gray-200 rounded-lg p-3 bg-white"
+                  className="border border-rose-200 rounded-lg p-3 bg-white"
                   open={isAdvancedSettingsOpen || Boolean(intervalsError)}
                   onToggle={(toggleEvent) => {
                     const detailsElement = toggleEvent.currentTarget;
@@ -1538,20 +1735,20 @@ export default function CreateBookingModal({
                     </div>
                     <div className="space-y-2">
                       {timeIntervals.map((interval) => (
-                        <div key={interval.id} className="rounded-lg border border-gray-200 p-2 bg-white">
+                        <div key={interval.id} className="rounded-lg border border-rose-200 p-2 bg-white">
                           <div className="flex items-center gap-2">
                             <input
                               type="time"
                               value={interval.timeStart}
                               onChange={(changeEvent) => updateInterval(interval.id, 'timeStart', changeEvent.target.value)}
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                              className="flex-1 px-3 py-2 border border-rose-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 text-sm"
                             />
                             <span className="text-gray-400">–</span>
                             <input
                               type="time"
                               value={interval.timeEnd}
                               disabled
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                              className="flex-1 px-3 py-2 border border-rose-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 text-sm"
                             />
                             {timeIntervals.length > 1 && (
                               <button
@@ -1587,7 +1784,7 @@ export default function CreateBookingModal({
                                   type="checkbox"
                                   checked={interval.services.feeding}
                                   onChange={() => toggleServiceForDefaultInterval(interval.id, 'feeding')}
-                                  className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
                                 />
                                 Pamaitinti
                               </label>
@@ -1596,7 +1793,7 @@ export default function CreateBookingModal({
                                   type="checkbox"
                                   checked={interval.services.litter}
                                   onChange={() => toggleServiceForDefaultInterval(interval.id, 'litter')}
-                                  className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
                                 />
                                 Kraikas
                               </label>
@@ -1605,7 +1802,7 @@ export default function CreateBookingModal({
                                   type="checkbox"
                                   checked={interval.services.walking}
                                   onChange={() => toggleServiceForDefaultInterval(interval.id, 'walking')}
-                                  className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
                                 />
                                 Pavedžioti
                               </label>
@@ -1619,7 +1816,7 @@ export default function CreateBookingModal({
                               value={interval.task}
                               onChange={(changeEvent) => updateTaskForDefaultInterval(interval.id, changeEvent.target.value)}
                               placeholder="Pvz: pamaitinti, pakeisti kraiką"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                              className="w-full px-3 py-2 border border-rose-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
                             />
                           </div>
                         </div>
@@ -1633,7 +1830,9 @@ export default function CreateBookingModal({
             </div>
 
             {/* Pets selection */}
-            <div className="order-2 border border-gray-200 rounded-lg p-3 bg-white">
+            <div
+              className={`${activeStep === 1 ? '' : 'hidden'} order-2 border ${petsAreValid ? 'border-green-200' : 'border-rose-200'} rounded-lg p-3 bg-white`}
+            >
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Augintiniai *
               </label>
@@ -1674,7 +1873,11 @@ export default function CreateBookingModal({
                                 : prev.petIds.filter((petId) => petId !== pet.id),
                             }));
                           }}
-                          className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                          className={`h-4 w-4 text-purple-600 rounded focus:ring-2 ${
+                            checked
+                              ? 'border-green-300 focus:ring-green-500'
+                              : 'border-rose-300 focus:ring-rose-500'
+                          }`}
                         />
                         <span>{pet.name}</span>
                       </label>
@@ -1685,12 +1888,14 @@ export default function CreateBookingModal({
             </div>
 
             {/* Sitter selection */}
-            <div className="order-1 border border-gray-200 rounded-lg p-3 bg-white">
+            <div
+              className={`${activeStep === 1 ? '' : 'hidden'} order-1 border ${sitterIsValid ? 'border-green-200' : 'border-rose-200'} rounded-lg p-3 bg-white`}
+            >
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Prižiūrėtojas *
               </label>
               {selectedSitter && !isSitterSelectorOpen ? (
-                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                <div className="border border-rose-200 rounded-lg p-3 bg-gray-50">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-gray-900 truncate">
@@ -1725,7 +1930,11 @@ export default function CreateBookingModal({
                       setIsSitterSelectorOpen(false);
                     }
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 ${
+                    sitterIsValid
+                      ? 'border-green-300 focus:ring-green-500 focus:border-green-500'
+                      : 'border-rose-300 focus:ring-rose-500 focus:border-rose-500'
+                  }`}
                 >
                   <option value="">Pasirinkite prižiūrėtoją</option>
                   {sitters.map((sitterProfile) => (
@@ -1738,7 +1947,9 @@ export default function CreateBookingModal({
             </div>
 
             {/* Address */}
-            <div className="order-3 border border-gray-200 rounded-lg p-3 bg-white">
+            <div
+              className={`${activeStep === 1 ? '' : 'hidden'} order-3 border ${addressIsValid ? 'border-green-200' : 'border-rose-200'} rounded-lg p-3 bg-white`}
+            >
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Adresas *
               </label>
@@ -1747,62 +1958,72 @@ export default function CreateBookingModal({
                 required
                 value={formData.address}
                 onChange={(changeEvent) => setFormData((prev) => ({ ...prev, address: changeEvent.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 ${
+                  addressIsValid
+                    ? 'border-green-300 focus:ring-green-500 focus:border-green-500'
+                    : 'border-rose-300 focus:ring-rose-500 focus:border-rose-500'
+                }`}
                 placeholder="Gatvė 123, Vilnius"
               />
             </div>
 
+      <div className={`${activeStep === 3 ? '' : 'hidden'} order-7 border border-rose-200 rounded-lg p-3 bg-white`}>
+        <p className="text-sm font-semibold text-gray-900 mb-2">Peržiūra</p>
+        <div className="text-sm text-gray-700">
+          <p>
+            {daysCount} dienos × €{pricePerVisit.toFixed(2)} = <span className="font-semibold">€{formData.totalPrice}</span>
+          </p>
+          <p className="text-xs text-gray-500 mt-1">Viso: {totalVisitsCount} vizitai · {totalHoursAcrossRange.toFixed(1)} val.</p>
+        </div>
+      </div>
+
+      <div
+        className={`${activeStep === 3 ? '' : 'hidden'} order-8 border ${priceIsValid ? 'border-green-200' : 'border-rose-200'} rounded-lg p-3 bg-white`}
+      >
+        <label className="block text-sm font-medium text-gray-700 mb-1">Bendra kaina (€) *</label>
+        {suggestedTotalPrice !== null && (
+          <p className="text-xs text-gray-500 mb-2">Siūloma kaina: €{suggestedTotalPrice} ({totalHoursAcrossRange.toFixed(1)} val. viso)</p>
+        )}
+        <input
+          type="number"
+          required
+          min="0"
+          step="0.5"
+          value={formData.totalPrice}
+          onChange={(changeEvent) => {
+            setIsPriceManuallyEdited(true);
+            setFormData((prev) => ({
+              ...prev,
+              totalPrice: Number.isFinite(Number(changeEvent.target.value))
+                ? parseFloat(changeEvent.target.value)
+                : 0,
+            }));
+          }}
+          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 ${
+            priceIsValid
+              ? 'border-green-300 focus:ring-green-500 focus:border-green-500'
+              : 'border-rose-300 focus:ring-rose-500 focus:border-rose-500'
+          }`}
+        />
+
+        <div className="mt-3">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Pastabos prižiūrėtojui</label>
+          <textarea
+            rows={3}
+            value={formData.notesForSitter}
+            onChange={(changeEvent) => setFormData((prev) => ({ ...prev, notesForSitter: changeEvent.target.value }))}
+            className="w-full px-3 py-2 border border-rose-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+            placeholder="Papildoma informacija prižiūrėtojui..."
+          />
+        </div>
+      </div>
     </>
   );
 
   const formSidebarFields = (
     <>
-
-            {/* Price */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Bendra kaina (€) *
-              </label>
-              {suggestedTotalPrice !== null && (
-                <p className="text-xs text-gray-500 mb-2">
-                  Siūloma kaina: €{suggestedTotalPrice} ({totalHoursAcrossRange.toFixed(1)} val. viso)
-                </p>
-              )}
-              <input
-                type="number"
-                required
-                min="0"
-                step="0.5"
-                value={formData.totalPrice}
-                onChange={(changeEvent) => {
-                  setIsPriceManuallyEdited(true);
-                  setFormData((prev) => ({
-                    ...prev,
-                    totalPrice: Number.isFinite(Number(changeEvent.target.value))
-                      ? parseFloat(changeEvent.target.value)
-                      : 0,
-                  }));
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              />
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Pastabos prižiūrėtojui
-              </label>
-              <textarea
-                rows={2}
-                value={formData.notesForSitter}
-                onChange={(changeEvent) => setFormData((prev) => ({ ...prev, notesForSitter: changeEvent.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="Papildoma informacija prižiūrėtojui..."
-              />
-            </div>
-
             {/* Summary */}
-            <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+            <div className="border border-rose-200 rounded-lg p-3 bg-gray-50">
               <p className="text-sm font-semibold text-gray-900 mb-2">Suvestinė</p>
               <div className="grid grid-cols-2 gap-2 text-xs text-gray-700">
                 <div>
@@ -1831,22 +2052,46 @@ export default function CreateBookingModal({
                   <p className="text-gray-500">Bendra kaina</p>
                   <p className="font-semibold text-lg">€{formData.totalPrice}</p>
                 </div>
+                <div className="col-span-2">
+                  <p className="text-gray-500">Skaičiavimas</p>
+                  <p className="font-semibold">{daysCount} d. × €{pricePerVisit.toFixed(2)} = €{formData.totalPrice}</p>
+                </div>
               </div>
             </div>
 
             {/* Buttons */}
             <div className="flex flex-col gap-3 pt-2">
-              {isSubmitDisabled && (
+              {activeStep === 3 && isSubmitDisabled && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                   <p className="text-sm text-red-800">{submitDisabledReason}</p>
                 </div>
+              )}
+
+              {activeStep > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveStep((prev) => (prev === 3 ? 2 : 1))}
+                  className="w-full px-4 py-2 border border-rose-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+                >
+                  Atgal
+                </button>
+              )}
+
+              {activeStep < 3 && (
+                <button
+                  type="button"
+                  onClick={() => goToStep((activeStep + 1) as 2 | 3)}
+                  className="w-full px-4 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition"
+                >
+                  Toliau
+                </button>
               )}
 
               {variant === 'modal' && (
                 <button
                   type="button"
                   onClick={onClose}
-                  className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+                  className="w-full px-4 py-2 border border-rose-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
                 >
                   Atšaukti
                 </button>
@@ -1854,10 +2099,10 @@ export default function CreateBookingModal({
 
               <button
                 type="submit"
-                disabled={isSubmitDisabled}
+                disabled={activeStep !== 3 || isSubmitDisabled}
                 className="w-full px-4 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 disabled:bg-purple-400 disabled:cursor-not-allowed transition"
               >
-                {loading ? 'Kuriama...' : 'Sukurti rezervaciją'}
+                {loading ? 'Pateikiama...' : 'Pateikti rezervaciją'}
               </button>
             </div>
     </>
@@ -1866,7 +2111,7 @@ export default function CreateBookingModal({
   if (variant === 'page') {
     return (
       <div className="min-h-screen bg-gray-50">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex items-center justify-between gap-3 mb-6">
             <div className="min-w-0">
               <h1 className="text-2xl font-bold text-gray-900 truncate">Nauja rezervacija</h1>
@@ -1875,13 +2120,13 @@ export default function CreateBookingModal({
             <button
               type="button"
               onClick={onClose}
-              className="shrink-0 px-3 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+              className="shrink-0 px-3 py-2 text-sm font-semibold text-gray-700 bg-white border border-rose-200 rounded-lg hover:bg-gray-50 transition"
             >
               Grįžti
             </button>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+          <div className="bg-white rounded-2xl shadow-sm border border-rose-200 p-6">
             <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 flex flex-col gap-4">
                 {formMainFields}
