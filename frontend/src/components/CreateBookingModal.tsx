@@ -115,8 +115,8 @@ export default function CreateBookingModal({
   const [timeIntervals, setTimeIntervals] = useState<TimeInterval[]>([
     {
       id: generateIntervalId(),
-      timeStart: '09:00',
-      timeEnd: '09:30',
+      timeStart: '13:00',
+      timeEnd: '13:30',
       services: DEFAULT_INTERVAL_SERVICES,
       task: 'Pamaitinti, pakeisti kraiką',
     },
@@ -226,6 +226,12 @@ export default function CreateBookingModal({
     return date.toISOString().slice(0, 10);
   }, []);
 
+  const formatDateIsoToDisplay = useCallback((dateIso: string) => {
+    const parsedDate = new Date(`${dateIso}T00:00:00`);
+    if (Number.isNaN(parsedDate.getTime())) return dateIso;
+    return parsedDate.toLocaleDateString('lt-LT', { month: 'long', day: 'numeric' });
+  }, []);
+
   const getDateRangeDayIsos = useCallback(() => {
     const normalized = selectedDates
       .map((date) => ({ date, iso: formatDateToIso(date) }))
@@ -248,21 +254,47 @@ export default function CreateBookingModal({
     [timeIntervals, timeIntervalsByDate],
   );
 
-  const getBusySlotsByDate = useCallback(() => {
-    const byDate = new Map<string, BusySlot[]>();
+  const getMergedBusyIntervalsByDate = useCallback(() => {
+    const byDate = new Map<string, Array<{ startMinutes: number; endMinutes: number }>>();
+
     for (const slot of busySlots) {
-      const existingSlots = byDate.get(slot.date);
-      if (existingSlots) {
-        existingSlots.push(slot);
+      const startMinutes = parseTimeToMinutes(slot.timeStart);
+      const endMinutes = parseTimeToMinutes(slot.timeEnd);
+      if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) continue;
+      if (endMinutes <= startMinutes) continue;
+
+      const existing = byDate.get(slot.date);
+      if (existing) {
+        existing.push({ startMinutes, endMinutes });
       } else {
-        byDate.set(slot.date, [slot]);
+        byDate.set(slot.date, [{ startMinutes, endMinutes }]);
       }
     }
-    for (const slotsForDay of byDate.values()) {
-      slotsForDay.sort((firstSlot, secondSlot) => firstSlot.timeStart.localeCompare(secondSlot.timeStart));
+
+    for (const [dateIso, intervals] of byDate.entries()) {
+      intervals.sort((first, second) => first.startMinutes - second.startMinutes);
+
+      const merged: Array<{ startMinutes: number; endMinutes: number }> = [];
+      for (const interval of intervals) {
+        const last = merged[merged.length - 1];
+        if (!last) {
+          merged.push({ ...interval });
+          continue;
+        }
+
+        if (interval.startMinutes <= last.endMinutes) {
+          last.endMinutes = Math.max(last.endMinutes, interval.endMinutes);
+          continue;
+        }
+
+        merged.push({ ...interval });
+      }
+
+      byDate.set(dateIso, merged);
     }
+
     return byDate;
-  }, [busySlots]);
+  }, [busySlots, parseTimeToMinutes]);
 
   // Computed values
   const dayIsos = getDateRangeDayIsos();
@@ -383,11 +415,12 @@ export default function CreateBookingModal({
     if (intervalsError) return [];
 
     const overlaps: BusySlot[] = [];
-    const busySlotsByDate = getBusySlotsByDate();
+    const seen = new Set<string>();
+    const busyIntervalsByDate = getMergedBusyIntervalsByDate();
 
     for (const dateIso of dayIsos) {
-      const dayBusySlots = busySlotsByDate.get(dateIso) ?? [];
-      if (dayBusySlots.length === 0) continue;
+      const dayBusyIntervals = busyIntervalsByDate.get(dateIso) ?? [];
+      if (dayBusyIntervals.length === 0) continue;
 
       const intervalsForDay = getIntervalsForDate(dateIso);
       for (const interval of intervalsForDay) {
@@ -395,19 +428,14 @@ export default function CreateBookingModal({
         const selectedEnd = parseTimeToMinutes(interval.timeEnd);
         if (!Number.isFinite(selectedStart) || !Number.isFinite(selectedEnd)) continue;
 
-        for (const slot of dayBusySlots) {
-          const slotStart = parseTimeToMinutes(slot.timeStart);
-          const slotEnd = parseTimeToMinutes(slot.timeEnd);
-          if (!Number.isFinite(slotStart) || !Number.isFinite(slotEnd)) continue;
-
-          if (selectedStart < slotEnd && selectedEnd > slotStart) {
-            const alreadyAdded = overlaps.some(
-              (existing) =>
-                existing.date === slot.date &&
-                existing.timeStart === slot.timeStart &&
-                existing.timeEnd === slot.timeEnd,
-            );
-            if (!alreadyAdded) overlaps.push(slot);
+        for (const busyInterval of dayBusyIntervals) {
+          if (selectedStart < busyInterval.endMinutes && selectedEnd > busyInterval.startMinutes) {
+            const timeStart = formatMinutesToTime(busyInterval.startMinutes);
+            const timeEnd = formatMinutesToTime(busyInterval.endMinutes);
+            const key = `${dateIso}|${timeStart}|${timeEnd}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            overlaps.push({ date: dateIso, timeStart, timeEnd });
           }
         }
       }
@@ -421,7 +449,7 @@ export default function CreateBookingModal({
     });
 
     return overlaps;
-  }, [dateError, formData.sitterProfileId, getBusySlotsByDate, dayIsos, getIntervalsForDate, intervalsError, parseTimeToMinutes]);
+  }, [dateError, formData.sitterProfileId, formatMinutesToTime, getIntervalsForDate, getMergedBusyIntervalsByDate, intervalsError, parseTimeToMinutes, dayIsos]);
 
   const hasBusyConflict = busyConflicts.length > 0;
 
@@ -452,11 +480,10 @@ export default function CreateBookingModal({
 
     if (!formData.sitterProfileId || dateError || intervalsError) return result;
 
-    const byDate = getBusySlotsByDate();
+    const byDate = getMergedBusyIntervalsByDate();
 
     for (const dateIso of dayIsos) {
-
-      const dayBusySlots = byDate.get(dateIso) ?? [];
+      const dayBusyIntervals = byDate.get(dateIso) ?? [];
 
       let totalIntervalMinutes = 0;
       let conflictMinutes = 0;
@@ -473,13 +500,9 @@ export default function CreateBookingModal({
         totalIntervalMinutes += intervalDuration;
 
         // Check overlap with busy slots
-        for (const busySlot of dayBusySlots) {
-          const busyStart = parseTimeToMinutes(busySlot.timeStart);
-          const busyEnd = parseTimeToMinutes(busySlot.timeEnd);
-          if (!Number.isFinite(busyStart) || !Number.isFinite(busyEnd)) continue;
-
-          const overlapStart = Math.max(intervalStart, busyStart);
-          const overlapEnd = Math.min(intervalEnd, busyEnd);
+        for (const busyInterval of dayBusyIntervals) {
+          const overlapStart = Math.max(intervalStart, busyInterval.startMinutes);
+          const overlapEnd = Math.min(intervalEnd, busyInterval.endMinutes);
           if (overlapEnd > overlapStart) {
             conflictMinutes += overlapEnd - overlapStart;
           }
@@ -498,7 +521,7 @@ export default function CreateBookingModal({
     }
 
     return result;
-  }, [dateError, dayIsos, formData.sitterProfileId, getBusySlotsByDate, getIntervalsForDate, intervalsError, parseTimeToMinutes]);
+  }, [dateError, dayIsos, formData.sitterProfileId, getIntervalsForDate, getMergedBusyIntervalsByDate, intervalsError, parseTimeToMinutes]);
 
   const daySummaries = useMemo(() => {
     return dayIsos.map((dateIso) => {
@@ -510,9 +533,14 @@ export default function CreateBookingModal({
 
   const selectedDayBusySlots = useMemo(() => {
     if (!selectedDayIso) return [] as BusySlot[];
-    const byDate = getBusySlotsByDate();
-    return byDate.get(selectedDayIso) ?? [];
-  }, [getBusySlotsByDate, selectedDayIso]);
+    const byDate = getMergedBusyIntervalsByDate();
+    const merged = byDate.get(selectedDayIso) ?? [];
+    return merged.map((interval) => ({
+      date: selectedDayIso,
+      timeStart: formatMinutesToTime(interval.startMinutes),
+      timeEnd: formatMinutesToTime(interval.endMinutes),
+    }));
+  }, [formatMinutesToTime, getMergedBusyIntervalsByDate, selectedDayIso]);
 
   const selectedDayIntervals = useMemo(() => {
     if (!selectedDayIso) return null;
@@ -530,36 +558,19 @@ export default function CreateBookingModal({
       return [];
     }
 
-    const busyIntervals = selectedDayBusySlots
-      .map((slot) => {
-        const startMinutes = parseTimeToMinutes(slot.timeStart);
-        const endMinutes = parseTimeToMinutes(slot.timeEnd);
-        if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) return null;
-        if (endMinutes <= startMinutes) return null;
-        const clampedStart = Math.max(workingStartMinutes, startMinutes);
-        const clampedEnd = Math.min(workingEndMinutes, endMinutes);
+    const mergedBusyIntervalsRaw = getMergedBusyIntervalsByDate().get(selectedDayIso) ?? [];
+    const mergedBusyIntervals = mergedBusyIntervalsRaw
+      .map((interval) => {
+        const clampedStart = Math.max(workingStartMinutes, interval.startMinutes);
+        const clampedEnd = Math.min(workingEndMinutes, interval.endMinutes);
         if (clampedEnd <= clampedStart) return null;
         return { startMinutes: clampedStart, endMinutes: clampedEnd };
       })
-      .filter((interval): interval is { startMinutes: number; endMinutes: number } => Boolean(interval))
-      .sort((firstInterval, secondInterval) => firstInterval.startMinutes - secondInterval.startMinutes);
-
-    const mergedBusyIntervals: Array<{ startMinutes: number; endMinutes: number }> = [];
-    for (const interval of busyIntervals) {
-      const lastInterval = mergedBusyIntervals[mergedBusyIntervals.length - 1];
-      if (!lastInterval) {
-        mergedBusyIntervals.push(interval);
-        continue;
-      }
-      if (interval.startMinutes <= lastInterval.endMinutes) {
-        lastInterval.endMinutes = Math.max(lastInterval.endMinutes, interval.endMinutes);
-        continue;
-      }
-      mergedBusyIntervals.push(interval);
-    }
+      .filter((interval): interval is { startMinutes: number; endMinutes: number } => Boolean(interval));
 
     const freeIntervals: Array<{ start: string; end: string; startMinutes: number; endMinutes: number }> = [];
     let cursorMinutes = workingStartMinutes;
+
     for (const busyInterval of mergedBusyIntervals) {
       if (cursorMinutes < busyInterval.startMinutes) {
         freeIntervals.push({
@@ -569,8 +580,11 @@ export default function CreateBookingModal({
           endMinutes: busyInterval.startMinutes,
         });
       }
+
       cursorMinutes = Math.max(cursorMinutes, busyInterval.endMinutes);
+      if (cursorMinutes >= workingEndMinutes) break;
     }
+
     if (cursorMinutes < workingEndMinutes) {
       freeIntervals.push({
         start: formatMinutesToTime(cursorMinutes),
@@ -581,7 +595,7 @@ export default function CreateBookingModal({
     }
 
     return freeIntervals.filter((interval) => interval.startMinutes < interval.endMinutes);
-  }, [formatMinutesToTime, parseTimeToMinutes, selectedDayBusySlots, selectedDayIso]);
+  }, [formatMinutesToTime, getMergedBusyIntervalsByDate, parseTimeToMinutes, selectedDayIso]);
 
   const setSelectedDayIntervals = useCallback(
     (dateIso: string, intervalsForDate: TimeInterval[]) => {
@@ -1153,7 +1167,7 @@ export default function CreateBookingModal({
                   : 'bg-white border-rose-200 text-gray-700 hover:bg-gray-50'
             }`}
           >
-            1. Klientas
+            1. Informacija
           </button>
           <button
             type="button"
@@ -1166,7 +1180,7 @@ export default function CreateBookingModal({
                   : 'bg-white border-rose-200 text-gray-700 hover:bg-gray-50'
             }`}
           >
-            2. Datos
+            2. Datos ir laikai
           </button>
           <button
             type="button"
@@ -1179,7 +1193,7 @@ export default function CreateBookingModal({
                   : 'bg-white border-rose-200 text-gray-700 hover:bg-gray-50'
             }`}
           >
-            3. Peržiūra
+            3. Patvirtinimas
           </button>
         </div>
       </div>
@@ -1300,7 +1314,7 @@ export default function CreateBookingModal({
                       onClick={openAdvancedSettings}
                       className="text-xs font-semibold text-purple-700 hover:text-purple-800"
                     >
-                      Keisti numatytuosius laikus
+                      Bendras vizito laikas visoms dienoms
                     </button>
                   </div>
                 </div>
@@ -1336,7 +1350,7 @@ export default function CreateBookingModal({
                             }`}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <p className="text-sm font-semibold">{dayInfo.dateIso}</p>
+                              <p className="text-sm font-semibold">{formatDateIsoToDisplay(dayInfo.dateIso)}</p>
                               <span className="text-[11px] font-semibold">
                                 {dayInfo.status === 'full'
                                   ? 'Užimta'
@@ -1346,7 +1360,7 @@ export default function CreateBookingModal({
                               </span>
                             </div>
                             <p className="text-[11px] mt-1 text-current/80">
-                              {dayInfo.hasOverride ? 'Turi savo laikus (override)' : 'Naudoja numatytuosius laikus'}
+                              {dayInfo.hasOverride ? 'Turi atskirus laikus' : 'Naudoja bendrus laikus'}
                             </p>
                           </button>
                         );
@@ -1366,7 +1380,7 @@ export default function CreateBookingModal({
                             onClick={resetSelectedDayOverride}
                             className="text-xs font-semibold text-gray-700 hover:text-gray-900"
                           >
-                            Grąžinti numatytuosius
+                            Naudoti bendrus laikus
                           </button>
                           <button
                             type="button"
@@ -1396,7 +1410,58 @@ export default function CreateBookingModal({
 
                       <details className="mb-3 border border-rose-200 rounded-lg p-2 bg-gray-50" open={hasBusyConflict}>
                         <summary className="cursor-pointer select-none text-xs font-semibold text-gray-700">
-                          Papildomai
+                          Užimtumas ir laisvi laikai
+                        </summary>
+
+                        <div className="mt-3">
+                          <p className="text-xs font-semibold text-gray-700 mb-1">Užimti laikai šiai dienai:</p>
+                          {selectedDayBusySlots.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {selectedDayBusySlots.map((slot, slotIndex) => (
+                                <span
+                                  key={`${slot.date}-${slot.timeStart}-${slotIndex}`}
+                                  className="text-[11px] px-2 py-1 rounded bg-red-100 border border-red-200 text-red-800"
+                                >
+                                  {slot.timeStart}–{slot.timeEnd}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-600">Šiai dienai užimtų laikų nėra.</p>
+                          )}
+
+                          {selectedDayFreeIntervals.length > 0 && (
+                            <div className="mt-3">
+                              <p className="text-xs font-semibold text-gray-700 mb-1">Laisvi laikai (greitas pridėjimas):</p>
+                              <div className="flex flex-wrap gap-2">
+                                {selectedDayFreeIntervals
+                                  .filter((freeInterval) => freeInterval.endMinutes - freeInterval.startMinutes >= 30)
+                                  .slice(0, 10)
+                                  .map((freeInterval) => (
+                                    <button
+                                      key={`${freeInterval.start}-${freeInterval.end}`}
+                                      type="button"
+                                      onClick={() =>
+                                        addVisitFromFreeIntervalForSelectedDay(
+                                          freeInterval.startMinutes,
+                                          freeInterval.endMinutes,
+                                        )
+                                      }
+                                      className="text-[11px] px-2 py-1 rounded bg-green-100 border border-green-200 text-green-900 hover:bg-green-200 transition"
+                                    >
+                                      {freeInterval.start}–{freeInterval.end}
+                                    </button>
+                                  ))}
+                              </div>
+                              <p className="text-[11px] text-gray-500 mt-1">Paspaudus pridedamas {getDurationMinutesForServices(newVisitServices)} min vizitas.</p>
+                            </div>
+                          )}
+                        </div>
+                      </details>
+
+                      <details className="mb-3 border border-rose-200 rounded-lg p-2 bg-gray-50">
+                        <summary className="cursor-pointer select-none text-xs font-semibold text-gray-700">
+                          Vizito nustatymai
                         </summary>
 
                         <div className="mt-3">
@@ -1495,6 +1560,7 @@ export default function CreateBookingModal({
                                 </label>
                               </div>
                             )}
+
                             <div className="mt-2">
                               <label className="block text-[11px] font-semibold text-gray-700 mb-1">Ką reikės padaryti (šablonas naujiems vizitams)</label>
                               <input
@@ -1525,51 +1591,6 @@ export default function CreateBookingModal({
                               </div>
                             </div>
                           </div>
-
-                          <div className="mt-3">
-                            <p className="text-xs font-semibold text-gray-700 mb-1">Užimti laikai šiai dienai:</p>
-                            {selectedDayBusySlots.length > 0 ? (
-                              <div className="flex flex-wrap gap-2">
-                                {selectedDayBusySlots.map((slot, slotIndex) => (
-                                  <span
-                                    key={`${slot.date}-${slot.timeStart}-${slotIndex}`}
-                                    className="text-[11px] px-2 py-1 rounded bg-red-100 border border-red-200 text-red-800"
-                                  >
-                                    {slot.timeStart}–{slot.timeEnd}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-xs text-gray-600">Šiai dienai užimtų laikų nėra.</p>
-                            )}
-                          </div>
-
-                          {selectedDayFreeIntervals.length > 0 && (
-                            <div className="mt-3">
-                              <p className="text-xs font-semibold text-gray-700 mb-1">Laisvi laikai (greitas pridėjimas):</p>
-                              <div className="flex flex-wrap gap-2">
-                                {selectedDayFreeIntervals
-                                  .filter((freeInterval) => freeInterval.endMinutes - freeInterval.startMinutes >= 30)
-                                  .slice(0, 10)
-                                  .map((freeInterval) => (
-                                    <button
-                                      key={`${freeInterval.start}-${freeInterval.end}`}
-                                      type="button"
-                                      onClick={() =>
-                                        addVisitFromFreeIntervalForSelectedDay(
-                                          freeInterval.startMinutes,
-                                          freeInterval.endMinutes,
-                                        )
-                                      }
-                                      className="text-[11px] px-2 py-1 rounded bg-green-100 border border-green-200 text-green-900 hover:bg-green-200 transition"
-                                    >
-                                      {freeInterval.start}–{freeInterval.end}
-                                    </button>
-                                  ))}
-                              </div>
-                              <p className="text-[11px] text-gray-500 mt-1">Paspaudus pridedamas {getDurationMinutesForServices(newVisitServices)} min vizitas.</p>
-                            </div>
-                          )}
                         </div>
                       </details>
 
@@ -1718,12 +1739,12 @@ export default function CreateBookingModal({
                   }}
                 >
                   <summary className="cursor-pointer select-none text-sm font-medium text-gray-800">
-                    Numatytieji laiko intervalai (išplėstiniai nustatymai)
+                    Bendri laikai visoms dienoms (išplėstiniai nustatymai)
                   </summary>
                   <div className="mt-3">
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-sm font-medium text-gray-700">
-                        Numatytieji laiko intervalai (taikomi visoms dienoms) *
+                        Bendri laikai (taikomi visoms dienoms) *
                       </label>
                       <button
                         type="button"
@@ -1733,6 +1754,11 @@ export default function CreateBookingModal({
                         + Pridėti intervalą
                       </button>
                     </div>
+
+                    <p className="text-xs text-gray-500 mb-2">
+                      Šie laikai taikomi visoms dienoms, kurios neturi atskirų laikų.
+                    </p>
+
                     <div className="space-y-2">
                       {timeIntervals.map((interval) => (
                         <div key={interval.id} className="rounded-lg border border-rose-200 p-2 bg-white">
