@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { DayPicker } from 'react-day-picker';
 import { lt } from 'react-day-picker/locale';
 import 'react-day-picker/style.css';
@@ -27,8 +26,10 @@ interface TimeInterval {
 
 type DayStatus = 'free' | 'partial' | 'full';
 
-const WORKING_DAY_START = '07:00';
-const WORKING_DAY_END = '22:00';
+const WORKING_DAY_START = '00:00';
+const WORKING_DAY_END = '24:00';
+
+const TRAVEL_BUFFER_MINUTES = 30;
 
 const DEFAULT_INTERVAL_SERVICES = {
   feeding: true,
@@ -73,20 +74,18 @@ export default function CreateBookingModal({
   prefillSitterProfileId,
   variant = 'modal',
 }: CreateBookingModalProps) {
-  const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuthStore();
 
-  const [activeStep, setActiveStep] = useState<1 | 2 | 3>(1);
+  const [activeStep, setActiveStep] = useState<1 | 2 | 3 | 4>(1);
 
-  const [pets, setPets] = useState<Pet[]>([]);
+  const [, setPets] = useState<Pet[]>([]);
   const [sitters, setSitters] = useState<SitterProfile[]>([]);
   const [isPriceManuallyEdited, setIsPriceManuallyEdited] = useState(false);
-  const [isSitterSelectorOpen, setIsSitterSelectorOpen] = useState(!prefillSitterProfileId);
-  const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
+  const [, setIsSitterSelectorOpen] = useState(!prefillSitterProfileId);
   const [busySlots, setBusySlots] = useState<BusySlot[]>([]);
   const [busyLoading, setBusyLoading] = useState(false);
-  const [busyError, setBusyError] = useState('');
+  const [, setBusyError] = useState('');
   const [selectedDayIso, setSelectedDayIso] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -106,21 +105,9 @@ export default function CreateBookingModal({
   const [isNewVisitServicesAdvancedOpen, setIsNewVisitServicesAdvancedOpen] = useState(false);
   const [newVisitTaskTemplate, setNewVisitTaskTemplate] = useState('');
 
-  const [selectedDayIntervalServicesOpenById, setSelectedDayIntervalServicesOpenById] = useState<Record<string, boolean>>({});
-  const [defaultIntervalServicesOpenById, setDefaultIntervalServicesOpenById] = useState<Record<string, boolean>>({});
+  const [showAllFreeTimeOptions, setShowAllFreeTimeOptions] = useState(false);
 
   const planningSectionRef = useRef<HTMLDivElement | null>(null);
-  const timeIntervalsSectionRef = useRef<HTMLDivElement | null>(null);
-
-  const [timeIntervals, setTimeIntervals] = useState<TimeInterval[]>([
-    {
-      id: generateIntervalId(),
-      timeStart: '13:00',
-      timeEnd: '13:30',
-      services: DEFAULT_INTERVAL_SERVICES,
-      task: 'Pamaitinti, pakeisti kraiką',
-    },
-  ]);
 
   const [timeIntervalsByDate, setTimeIntervalsByDate] = useState<Record<string, TimeInterval[]>>({});
 
@@ -223,13 +210,10 @@ export default function CreateBookingModal({
 
 
   const formatDateToIso = useCallback((date: Date) => {
-    return date.toISOString().slice(0, 10);
-  }, []);
-
-  const formatDateIsoToDisplay = useCallback((dateIso: string) => {
-    const parsedDate = new Date(`${dateIso}T00:00:00`);
-    if (Number.isNaN(parsedDate.getTime())) return dateIso;
-    return parsedDate.toLocaleDateString('lt-LT', { month: 'long', day: 'numeric' });
+    const yearPart = date.getFullYear();
+    const monthPart = String(date.getMonth() + 1).padStart(2, '0');
+    const dayPart = String(date.getDate()).padStart(2, '0');
+    return `${yearPart}-${monthPart}-${dayPart}`;
   }, []);
 
   const getDateRangeDayIsos = useCallback(() => {
@@ -246,12 +230,25 @@ export default function CreateBookingModal({
     return uniqueIsos;
   }, [formatDateToIso, selectedDates]);
 
+  useEffect(() => {
+    const selectedIsoSet = new Set(getDateRangeDayIsos());
+    setTimeIntervalsByDate((prev) => {
+      const next: Record<string, TimeInterval[]> = {};
+      for (const [dateIso, intervalsForDate] of Object.entries(prev)) {
+        if (selectedIsoSet.has(dateIso)) {
+          next[dateIso] = intervalsForDate;
+        }
+      }
+      return next;
+    });
+  }, [getDateRangeDayIsos]);
+
   const getIntervalsForDate = useCallback(
     (dateIso: string) => {
       const overrideIntervals = timeIntervalsByDate[dateIso];
-      return overrideIntervals ?? timeIntervals;
+      return overrideIntervals ?? [];
     },
-    [timeIntervals, timeIntervalsByDate],
+    [timeIntervalsByDate],
   );
 
   const getMergedBusyIntervalsByDate = useCallback(() => {
@@ -311,13 +308,9 @@ export default function CreateBookingModal({
   const dateError = getDateError();
 
   const getIntervalsError = useCallback(() => {
-    if (dayIsos.length === 0) {
-      if (timeIntervals.length === 0) return 'Pridėkite bent vieną laiko intervalą';
-    }
-
     const validateIntervals = (intervalsToValidate: TimeInterval[], labelPrefix: string) => {
       if (intervalsToValidate.length === 0) {
-        return `${labelPrefix}: pridėkite bent vieną laiko intervalą`;
+        return '';
       }
 
       const normalized = intervalsToValidate
@@ -335,7 +328,7 @@ export default function CreateBookingModal({
           return `${labelPrefix}: neteisingas laikas`;
         }
         if (interval.endMinutes <= interval.startMinutes) {
-          return `${labelPrefix}: intervalas ${interval.timeStart}–${interval.timeEnd} neteisingas (pabaiga turi būti vėliau)`;
+          return `${labelPrefix}: vizitas ${interval.timeStart}–${interval.timeEnd} neteisingas (pabaiga turi būti vėliau)`;
         }
       }
 
@@ -343,25 +336,26 @@ export default function CreateBookingModal({
         const previous = normalized[index - 1];
         const current = normalized[index];
         if (current.startMinutes < previous.endMinutes) {
-          return `${labelPrefix}: intervalai persidengia (${previous.timeStart}–${previous.timeEnd} ir ${current.timeStart}–${current.timeEnd})`;
+          return `${labelPrefix}: vizitai persidengia (${previous.timeStart}–${previous.timeEnd} ir ${current.timeStart}–${current.timeEnd})`;
         }
       }
 
       return '';
     };
 
-    const defaultError = validateIntervals(timeIntervals, 'Numatytieji laikai');
-    if (defaultError) return defaultError;
+    const totalVisitsAcrossSelectedDays = dayIsos.reduce((sum, dateIso) => sum + (timeIntervalsByDate[dateIso]?.length ?? 0), 0);
+    if (dayIsos.length > 0 && totalVisitsAcrossSelectedDays === 0) {
+      return 'Pridėkite bent vieną vizito laiką';
+    }
 
     for (const dateIso of dayIsos) {
-      const overrideIntervals = timeIntervalsByDate[dateIso];
-      if (!overrideIntervals) continue;
-      const overrideError = validateIntervals(overrideIntervals, `Diena ${dateIso}`);
-      if (overrideError) return overrideError;
+      const intervalsForDate = timeIntervalsByDate[dateIso] ?? [];
+      const dateError = validateIntervals(intervalsForDate, `Diena ${dateIso}`);
+      if (dateError) return dateError;
     }
 
     return '';
-  }, [dayIsos, parseTimeToMinutes, timeIntervals, timeIntervalsByDate]);
+  }, [dayIsos, parseTimeToMinutes, timeIntervalsByDate]);
 
   const intervalsError = getIntervalsError();
 
@@ -428,8 +422,14 @@ export default function CreateBookingModal({
         const selectedEnd = parseTimeToMinutes(interval.timeEnd);
         if (!Number.isFinite(selectedStart) || !Number.isFinite(selectedEnd)) continue;
 
+        const selectedStartBuffered = Math.max(0, selectedStart - TRAVEL_BUFFER_MINUTES);
+        const selectedEndBuffered = selectedEnd + TRAVEL_BUFFER_MINUTES;
+
         for (const busyInterval of dayBusyIntervals) {
-          if (selectedStart < busyInterval.endMinutes && selectedEnd > busyInterval.startMinutes) {
+          const busyStartBuffered = Math.max(0, busyInterval.startMinutes - TRAVEL_BUFFER_MINUTES);
+          const busyEndBuffered = busyInterval.endMinutes + TRAVEL_BUFFER_MINUTES;
+
+          if (selectedStartBuffered < busyEndBuffered && selectedEndBuffered > busyStartBuffered) {
             const timeStart = formatMinutesToTime(busyInterval.startMinutes);
             const timeEnd = formatMinutesToTime(busyInterval.endMinutes);
             const key = `${dateIso}|${timeStart}|${timeEnd}`;
@@ -467,13 +467,6 @@ export default function CreateBookingModal({
 
   const isSubmitDisabled = Boolean(submitDisabledReason);
 
-  const openAdvancedSettings = useCallback(() => {
-    setIsAdvancedSettingsOpen(true);
-    requestAnimationFrame(() => {
-      timeIntervalsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }, []);
-
   // Calculate availability status for each day (for calendar coloring)
   const availabilityByDate = useMemo(() => {
     const result = new Map<string, DayStatus>();
@@ -494,15 +487,21 @@ export default function CreateBookingModal({
         const intervalEnd = parseTimeToMinutes(interval.timeEnd);
         if (!Number.isFinite(intervalStart) || !Number.isFinite(intervalEnd)) continue;
 
-        const intervalDuration = intervalEnd - intervalStart;
+        const intervalStartBuffered = Math.max(0, intervalStart - TRAVEL_BUFFER_MINUTES);
+        const intervalEndBuffered = intervalEnd + TRAVEL_BUFFER_MINUTES;
+
+        const intervalDuration = intervalEndBuffered - intervalStartBuffered;
         if (intervalDuration <= 0) continue;
 
         totalIntervalMinutes += intervalDuration;
 
         // Check overlap with busy slots
         for (const busyInterval of dayBusyIntervals) {
-          const overlapStart = Math.max(intervalStart, busyInterval.startMinutes);
-          const overlapEnd = Math.min(intervalEnd, busyInterval.endMinutes);
+          const busyStartBuffered = Math.max(0, busyInterval.startMinutes - TRAVEL_BUFFER_MINUTES);
+          const busyEndBuffered = busyInterval.endMinutes + TRAVEL_BUFFER_MINUTES;
+
+          const overlapStart = Math.max(intervalStartBuffered, busyStartBuffered);
+          const overlapEnd = Math.min(intervalEndBuffered, busyEndBuffered);
           if (overlapEnd > overlapStart) {
             conflictMinutes += overlapEnd - overlapStart;
           }
@@ -531,21 +530,245 @@ export default function CreateBookingModal({
     });
   }, [availabilityByDate, dayIsos, timeIntervalsByDate]);
 
-  const selectedDayBusySlots = useMemo(() => {
-    if (!selectedDayIso) return [] as BusySlot[];
-    const byDate = getMergedBusyIntervalsByDate();
-    const merged = byDate.get(selectedDayIso) ?? [];
-    return merged.map((interval) => ({
-      date: selectedDayIso,
-      timeStart: formatMinutesToTime(interval.startMinutes),
-      timeEnd: formatMinutesToTime(interval.endMinutes),
-    }));
-  }, [formatMinutesToTime, getMergedBusyIntervalsByDate, selectedDayIso]);
-
   const selectedDayIntervals = useMemo(() => {
     if (!selectedDayIso) return null;
     return getIntervalsForDate(selectedDayIso);
   }, [getIntervalsForDate, selectedDayIso]);
+
+  const selectedDayConflictingVisitId = useMemo(() => {
+    if (!selectedDayIso) return null;
+    if (!selectedDayIntervals) return null;
+
+    const mergedBusyIntervals = getMergedBusyIntervalsByDate().get(selectedDayIso) ?? [];
+    const normalizedIntervals = selectedDayIntervals
+      .map((interval) => ({
+        id: interval.id,
+        startMinutes: parseTimeToMinutes(interval.timeStart),
+        endMinutes: parseTimeToMinutes(interval.timeEnd),
+      }))
+      .filter((interval) => Number.isFinite(interval.startMinutes) && Number.isFinite(interval.endMinutes))
+      .filter((interval) => interval.endMinutes > interval.startMinutes)
+      .map((interval) => ({
+        ...interval,
+        startMinutesBuffered: Math.max(0, interval.startMinutes - TRAVEL_BUFFER_MINUTES),
+        endMinutesBuffered: interval.endMinutes + TRAVEL_BUFFER_MINUTES,
+      }))
+      .sort((first, second) => first.startMinutesBuffered - second.startMinutesBuffered);
+
+    for (const interval of normalizedIntervals) {
+      const overlapsBusy = mergedBusyIntervals.some((busyInterval) => {
+        const busyStartBuffered = Math.max(0, busyInterval.startMinutes - TRAVEL_BUFFER_MINUTES);
+        const busyEndBuffered = busyInterval.endMinutes + TRAVEL_BUFFER_MINUTES;
+        return interval.startMinutesBuffered < busyEndBuffered && interval.endMinutesBuffered > busyStartBuffered;
+      });
+      if (overlapsBusy) return interval.id;
+    }
+
+    for (let index = 1; index < normalizedIntervals.length; index += 1) {
+      const previousInterval = normalizedIntervals[index - 1];
+      const currentInterval = normalizedIntervals[index];
+      if (currentInterval.startMinutesBuffered < previousInterval.endMinutesBuffered) {
+        return currentInterval.id;
+      }
+    }
+
+    return null;
+  }, [getMergedBusyIntervalsByDate, parseTimeToMinutes, selectedDayIntervals, selectedDayIso]);
+
+  const getMergedBlockedIntervalsForDate = useCallback(
+    (dateIso: string) => {
+      const workingStartMinutes = parseTimeToMinutes(WORKING_DAY_START);
+      const workingEndMinutes = parseTimeToMinutes(WORKING_DAY_END);
+      if (!Number.isFinite(workingStartMinutes) || !Number.isFinite(workingEndMinutes)) {
+        return [] as Array<{ startMinutes: number; endMinutes: number }>;
+      }
+
+      const mergedBusyIntervalsRaw = getMergedBusyIntervalsByDate().get(dateIso) ?? [];
+      const intervalsForDay = getIntervalsForDate(dateIso);
+
+      const blockedIntervalsRaw: Array<{ startMinutes: number; endMinutes: number }> = [];
+
+      for (const busyInterval of mergedBusyIntervalsRaw) {
+        const bufferedStart = Math.max(0, busyInterval.startMinutes - TRAVEL_BUFFER_MINUTES);
+        const bufferedEnd = busyInterval.endMinutes + TRAVEL_BUFFER_MINUTES;
+
+        const clampedStart = Math.max(workingStartMinutes, bufferedStart);
+        const clampedEnd = Math.min(workingEndMinutes, bufferedEnd);
+        if (clampedEnd <= clampedStart) continue;
+        blockedIntervalsRaw.push({ startMinutes: clampedStart, endMinutes: clampedEnd });
+      }
+
+      for (const visitInterval of intervalsForDay) {
+        const startMinutes = parseTimeToMinutes(visitInterval.timeStart);
+        const endMinutes = parseTimeToMinutes(visitInterval.timeEnd);
+        if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) continue;
+        if (endMinutes <= startMinutes) continue;
+
+        const bufferedStart = Math.max(0, startMinutes - TRAVEL_BUFFER_MINUTES);
+        const bufferedEnd = endMinutes + TRAVEL_BUFFER_MINUTES;
+
+        const clampedStart = Math.max(workingStartMinutes, bufferedStart);
+        const clampedEnd = Math.min(workingEndMinutes, bufferedEnd);
+        if (clampedEnd <= clampedStart) continue;
+
+        blockedIntervalsRaw.push({ startMinutes: clampedStart, endMinutes: clampedEnd });
+      }
+
+      blockedIntervalsRaw.sort((first, second) => first.startMinutes - second.startMinutes);
+
+      const mergedBlockedIntervals: Array<{ startMinutes: number; endMinutes: number }> = [];
+      for (const interval of blockedIntervalsRaw) {
+        const lastInterval = mergedBlockedIntervals[mergedBlockedIntervals.length - 1];
+        if (!lastInterval) {
+          mergedBlockedIntervals.push({ ...interval });
+          continue;
+        }
+
+        if (interval.startMinutes <= lastInterval.endMinutes) {
+          lastInterval.endMinutes = Math.max(lastInterval.endMinutes, interval.endMinutes);
+          continue;
+        }
+
+        mergedBlockedIntervals.push({ ...interval });
+      }
+
+      return mergedBlockedIntervals;
+    },
+    [getIntervalsForDate, getMergedBusyIntervalsByDate, parseTimeToMinutes],
+  );
+
+  const getFreeIntervalsFromBusyOnlyForDate = useCallback(
+    (dateIso: string) => {
+      const workingStartMinutes = parseTimeToMinutes(WORKING_DAY_START);
+      const workingEndMinutes = parseTimeToMinutes(WORKING_DAY_END);
+      if (!Number.isFinite(workingStartMinutes) || !Number.isFinite(workingEndMinutes)) {
+        return [] as Array<{ startMinutes: number; endMinutes: number }>;
+      }
+
+      const mergedBusyIntervalsRaw = getMergedBusyIntervalsByDate().get(dateIso) ?? [];
+
+      const blockedIntervalsRaw: Array<{ startMinutes: number; endMinutes: number }> = [];
+
+      for (const busyInterval of mergedBusyIntervalsRaw) {
+        const bufferedStart = Math.max(0, busyInterval.startMinutes - TRAVEL_BUFFER_MINUTES);
+        const bufferedEnd = busyInterval.endMinutes + TRAVEL_BUFFER_MINUTES;
+
+        const clampedStart = Math.max(workingStartMinutes, bufferedStart);
+        const clampedEnd = Math.min(workingEndMinutes, bufferedEnd);
+        if (clampedEnd <= clampedStart) continue;
+        blockedIntervalsRaw.push({ startMinutes: clampedStart, endMinutes: clampedEnd });
+      }
+
+      blockedIntervalsRaw.sort((first, second) => first.startMinutes - second.startMinutes);
+
+      const mergedBlockedIntervals: Array<{ startMinutes: number; endMinutes: number }> = [];
+      for (const interval of blockedIntervalsRaw) {
+        const lastInterval = mergedBlockedIntervals[mergedBlockedIntervals.length - 1];
+        if (!lastInterval) {
+          mergedBlockedIntervals.push({ ...interval });
+          continue;
+        }
+
+        if (interval.startMinutes <= lastInterval.endMinutes) {
+          lastInterval.endMinutes = Math.max(lastInterval.endMinutes, interval.endMinutes);
+          continue;
+        }
+
+        mergedBlockedIntervals.push({ ...interval });
+      }
+
+      const freeIntervals: Array<{ startMinutes: number; endMinutes: number }> = [];
+      let cursorMinutes = workingStartMinutes;
+
+      for (const blockedInterval of mergedBlockedIntervals) {
+        if (cursorMinutes < blockedInterval.startMinutes) {
+          freeIntervals.push({
+            startMinutes: cursorMinutes,
+            endMinutes: blockedInterval.startMinutes,
+          });
+        }
+
+        cursorMinutes = Math.max(cursorMinutes, blockedInterval.endMinutes);
+        if (cursorMinutes >= workingEndMinutes) break;
+      }
+
+      if (cursorMinutes < workingEndMinutes) {
+        freeIntervals.push({
+          startMinutes: cursorMinutes,
+          endMinutes: workingEndMinutes,
+        });
+      }
+
+      return freeIntervals.filter((interval) => interval.startMinutes < interval.endMinutes);
+    },
+    [getMergedBusyIntervalsByDate, parseTimeToMinutes],
+  );
+
+  const findNextFreeStartMinutes = useCallback(
+    (
+      freeIntervals: Array<{ startMinutes: number; endMinutes: number }>,
+      preferredStartMinutes: number,
+      durationMinutes: number,
+    ) => {
+      if (!Number.isFinite(preferredStartMinutes)) return null;
+      if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) return null;
+
+      for (const freeInterval of freeIntervals) {
+        const usableStartMinutes = freeInterval.startMinutes + TRAVEL_BUFFER_MINUTES;
+        const usableEndMinutes = freeInterval.endMinutes - TRAVEL_BUFFER_MINUTES;
+        if (usableEndMinutes - usableStartMinutes < durationMinutes) continue;
+
+        const candidateStartMinutes = Math.max(preferredStartMinutes, usableStartMinutes);
+        if (candidateStartMinutes + durationMinutes <= usableEndMinutes) {
+          return candidateStartMinutes;
+        }
+      }
+
+      return null;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!formData.sitterProfileId) return;
+    if (dayIsos.length === 0) return;
+
+    const durationMinutes = getDurationMinutesForServices(newVisitServices);
+    const preferredStartMinutes = parseTimeToMinutes(defaultStartTimeForWindow);
+
+    setTimeIntervalsByDate((prev) => {
+      const next = { ...prev };
+      let didChange = false;
+
+      for (const dateIso of dayIsos) {
+        if (next[dateIso] && next[dateIso].length > 0) continue;
+
+        const freeIntervals = getFreeIntervalsFromBusyOnlyForDate(dateIso);
+        const nextStartMinutes = findNextFreeStartMinutes(
+          freeIntervals,
+          Number.isFinite(preferredStartMinutes) ? preferredStartMinutes : 0,
+          durationMinutes,
+        );
+
+        const resolvedStartMinutes =
+          nextStartMinutes ?? (Number.isFinite(preferredStartMinutes) ? preferredStartMinutes : 0);
+
+        next[dateIso] = [
+          {
+            id: generateIntervalId(),
+            timeStart: formatMinutesToTime(resolvedStartMinutes),
+            timeEnd: formatMinutesToTime(resolvedStartMinutes + durationMinutes),
+            services: { ...newVisitServices },
+            task: newVisitTaskTemplate.trim() || formatServicesLabel(newVisitServices),
+          },
+        ];
+
+        didChange = true;
+      }
+
+      return didChange ? next : prev;
+    });
+  }, [dayIsos, defaultStartTimeForWindow, findNextFreeStartMinutes, formData.sitterProfileId, formatMinutesToTime, formatServicesLabel, generateIntervalId, getDurationMinutesForServices, getFreeIntervalsFromBusyOnlyForDate, newVisitServices, newVisitTaskTemplate, parseTimeToMinutes]);
 
   const selectedDayFreeIntervals = useMemo(() => {
     if (!selectedDayIso) {
@@ -558,30 +781,22 @@ export default function CreateBookingModal({
       return [];
     }
 
-    const mergedBusyIntervalsRaw = getMergedBusyIntervalsByDate().get(selectedDayIso) ?? [];
-    const mergedBusyIntervals = mergedBusyIntervalsRaw
-      .map((interval) => {
-        const clampedStart = Math.max(workingStartMinutes, interval.startMinutes);
-        const clampedEnd = Math.min(workingEndMinutes, interval.endMinutes);
-        if (clampedEnd <= clampedStart) return null;
-        return { startMinutes: clampedStart, endMinutes: clampedEnd };
-      })
-      .filter((interval): interval is { startMinutes: number; endMinutes: number } => Boolean(interval));
+    const mergedBlockedIntervals = getMergedBlockedIntervalsForDate(selectedDayIso);
 
     const freeIntervals: Array<{ start: string; end: string; startMinutes: number; endMinutes: number }> = [];
     let cursorMinutes = workingStartMinutes;
 
-    for (const busyInterval of mergedBusyIntervals) {
-      if (cursorMinutes < busyInterval.startMinutes) {
+    for (const blockedInterval of mergedBlockedIntervals) {
+      if (cursorMinutes < blockedInterval.startMinutes) {
         freeIntervals.push({
           start: formatMinutesToTime(cursorMinutes),
-          end: formatMinutesToTime(busyInterval.startMinutes),
+          end: formatMinutesToTime(blockedInterval.startMinutes),
           startMinutes: cursorMinutes,
-          endMinutes: busyInterval.startMinutes,
+          endMinutes: blockedInterval.startMinutes,
         });
       }
 
-      cursorMinutes = Math.max(cursorMinutes, busyInterval.endMinutes);
+      cursorMinutes = Math.max(cursorMinutes, blockedInterval.endMinutes);
       if (cursorMinutes >= workingEndMinutes) break;
     }
 
@@ -595,7 +810,25 @@ export default function CreateBookingModal({
     }
 
     return freeIntervals.filter((interval) => interval.startMinutes < interval.endMinutes);
-  }, [formatMinutesToTime, getMergedBusyIntervalsByDate, parseTimeToMinutes, selectedDayIso]);
+  }, [formatMinutesToTime, getMergedBlockedIntervalsForDate, parseTimeToMinutes, selectedDayIso]);
+
+  const suggestedNextFreeVisitStartMinutes = useMemo(() => {
+    if (!selectedDayIso) return null;
+
+    const durationMinutes = getDurationMinutesForServices(newVisitServices);
+    const preferredStartMinutes = parseTimeToMinutes(defaultStartTimeForWindow);
+    if (!Number.isFinite(preferredStartMinutes)) return null;
+
+    return findNextFreeStartMinutes(
+      selectedDayFreeIntervals,
+      preferredStartMinutes,
+      durationMinutes,
+    );
+  }, [defaultStartTimeForWindow, findNextFreeStartMinutes, getDurationMinutesForServices, newVisitServices, parseTimeToMinutes, selectedDayFreeIntervals, selectedDayIso]);
+
+  useEffect(() => {
+    setShowAllFreeTimeOptions(false);
+  }, [selectedDayIso]);
 
   const setSelectedDayIntervals = useCallback(
     (dateIso: string, intervalsForDate: TimeInterval[]) => {
@@ -606,6 +839,85 @@ export default function CreateBookingModal({
       setIsPriceManuallyEdited(false);
     },
     [],
+  );
+
+  const addVisitFromFreeIntervalForSelectedDay = useCallback(
+    (freeStartMinutes: number, freeEndMinutes: number) => {
+      if (!selectedDayIso) return;
+
+      const durationMinutes = getDurationMinutesForServices(newVisitServices);
+      const visitEndMinutes = Math.min(freeEndMinutes, freeStartMinutes + durationMinutes);
+      if (visitEndMinutes <= freeStartMinutes) return;
+
+      setSelectedDayIntervals(selectedDayIso, [
+        ...getIntervalsForDate(selectedDayIso),
+        {
+          id: generateIntervalId(),
+          timeStart: formatMinutesToTime(freeStartMinutes),
+          timeEnd: formatMinutesToTime(visitEndMinutes),
+          services: { ...newVisitServices },
+          task: newVisitTaskTemplate.trim() || formatServicesLabel(newVisitServices),
+        },
+      ]);
+    },
+    [
+      formatServicesLabel,
+      formatMinutesToTime,
+      generateIntervalId,
+      getDurationMinutesForServices,
+      getIntervalsForDate,
+      newVisitServices,
+      newVisitTaskTemplate,
+      selectedDayIso,
+      setSelectedDayIntervals,
+    ],
+  );
+
+  const applyFreeTimeForSelectedDay = useCallback(
+    (startMinutes: number) => {
+      if (!selectedDayIso) return;
+      if (!Number.isFinite(startMinutes)) return;
+
+      const currentIntervals = getIntervalsForDate(selectedDayIso);
+
+      // If there is a conflict, move the first conflicting visit to the chosen start.
+      if (selectedDayConflictingVisitId) {
+        const nextIntervals = currentIntervals.map((interval) => {
+          if (interval.id !== selectedDayConflictingVisitId) return interval;
+
+          const durationMinutes = getDurationMinutesForServices(interval.services);
+          const nextEndMinutes = startMinutes + durationMinutes;
+
+          return {
+            ...interval,
+            timeStart: formatMinutesToTime(startMinutes),
+            timeEnd: formatMinutesToTime(nextEndMinutes),
+          };
+        });
+
+        setSelectedDayIntervals(selectedDayIso, nextIntervals);
+        return;
+      }
+
+      const durationMinutes = getDurationMinutesForServices(newVisitServices);
+      const matchingFreeInterval = selectedDayFreeIntervals.find(
+        (interval) => interval.startMinutes === startMinutes || (startMinutes >= interval.startMinutes && startMinutes < interval.endMinutes),
+      );
+      const freeEndMinutes = matchingFreeInterval ? matchingFreeInterval.endMinutes : startMinutes + durationMinutes;
+
+      addVisitFromFreeIntervalForSelectedDay(startMinutes, freeEndMinutes);
+    },
+    [
+      addVisitFromFreeIntervalForSelectedDay,
+      formatMinutesToTime,
+      getDurationMinutesForServices,
+      getIntervalsForDate,
+      newVisitServices,
+      selectedDayConflictingVisitId,
+      selectedDayFreeIntervals,
+      selectedDayIso,
+      setSelectedDayIntervals,
+    ],
   );
 
   // Load initial data
@@ -647,28 +959,6 @@ export default function CreateBookingModal({
     void loadData();
   }, [prefillSitterProfileId]);
 
-  const addIntervalForSelectedDay = () => {
-    if (!selectedDayIso) return;
-    const currentIntervals = getIntervalsForDate(selectedDayIso);
-    const durationMinutes = getDurationMinutesForServices(newVisitServices);
-    const defaultStart = defaultStartTimeForWindow;
-    const startMinutes = parseTimeToMinutes(defaultStart);
-    const nextEnd = Number.isFinite(startMinutes)
-      ? formatMinutesToTime(startMinutes + durationMinutes)
-      : '14:30';
-    const nextIntervals = [
-      ...currentIntervals,
-      {
-        id: generateIntervalId(),
-        timeStart: defaultStart,
-        timeEnd: nextEnd,
-        services: { ...newVisitServices },
-        task: newVisitTaskTemplate.trim() || formatServicesLabel(newVisitServices),
-      },
-    ];
-    setSelectedDayIntervals(selectedDayIso, nextIntervals);
-  };
-
   const removeIntervalForSelectedDay = (intervalId: string) => {
     if (!selectedDayIso) return;
     const currentIntervals = getIntervalsForDate(selectedDayIso);
@@ -706,62 +996,6 @@ export default function CreateBookingModal({
     );
   };
 
-  const toggleServiceForSelectedDayInterval = (
-    intervalId: string,
-    serviceKey: keyof TimeInterval['services'],
-  ) => {
-    if (!selectedDayIso) return;
-    const currentIntervals = getIntervalsForDate(selectedDayIso);
-
-    setSelectedDayIntervals(
-      selectedDayIso,
-      currentIntervals.map((interval) => {
-        if (interval.id !== intervalId) return interval;
-
-        const nextServices = {
-          ...interval.services,
-          [serviceKey]: !interval.services[serviceKey],
-        };
-
-        const startMinutes = parseTimeToMinutes(interval.timeStart);
-        if (!Number.isFinite(startMinutes)) {
-          return {
-            ...interval,
-            services: nextServices,
-          };
-        }
-
-        const durationMinutes = getDurationMinutesForServices(nextServices);
-        return {
-          ...interval,
-          services: nextServices,
-          timeEnd: formatMinutesToTime(startMinutes + durationMinutes),
-        };
-      }),
-    );
-  };
-
-  const updateTaskForSelectedDayInterval = (intervalId: string, nextTask: string) => {
-    if (!selectedDayIso) return;
-    const currentIntervals = getIntervalsForDate(selectedDayIso);
-    setSelectedDayIntervals(
-      selectedDayIso,
-      currentIntervals.map((interval) =>
-        interval.id === intervalId ? { ...interval, task: nextTask } : interval,
-      ),
-    );
-  };
-
-  const resetSelectedDayOverride = () => {
-    if (!selectedDayIso) return;
-    setTimeIntervalsByDate((prev) => {
-      const next = { ...prev };
-      delete next[selectedDayIso];
-      return next;
-    });
-    setIsPriceManuallyEdited(false);
-  };
-
   const toggleNewVisitService = (serviceKey: keyof TimeInterval['services']) => {
     setIsNewVisitServicesAdvancedOpen(true);
     setNewVisitServices((prev) => ({
@@ -770,44 +1004,11 @@ export default function CreateBookingModal({
     }));
   };
 
-  const toggleDefaultIntervalServices = useCallback((intervalId: string) => {
-    setDefaultIntervalServicesOpenById((prev) => ({
-      ...prev,
-      [intervalId]: !prev[intervalId],
-    }));
-  }, []);
-
-  const addVisitFromFreeIntervalForSelectedDay = (
-    freeStartMinutes: number,
-    freeEndMinutes: number,
-  ) => {
-    if (!selectedDayIso) return;
-
-    const durationMinutes = getDurationMinutesForServices(newVisitServices);
-    const visitEndMinutes = Math.min(freeEndMinutes, freeStartMinutes + durationMinutes);
-    if (visitEndMinutes <= freeStartMinutes) return;
-
-    const currentIntervals = getIntervalsForDate(selectedDayIso);
-    const currentOverride = timeIntervalsByDate[selectedDayIso];
-    const nextBaseIntervals = currentOverride ? currentIntervals : [...currentIntervals];
-
-    setSelectedDayIntervals(selectedDayIso, [
-      ...nextBaseIntervals,
-      {
-        id: generateIntervalId(),
-        timeStart: formatMinutesToTime(freeStartMinutes),
-        timeEnd: formatMinutesToTime(visitEndMinutes),
-        services: { ...newVisitServices },
-        task: newVisitTaskTemplate.trim() || formatServicesLabel(newVisitServices),
-      },
-    ]);
-  };
-
   const setVisitsCountForSelectedDay = (visitsCount: number) => {
     if (!selectedDayIso) return;
 
     const durationMinutes = getDurationMinutesForServices(newVisitServices);
-    const freeIntervals = selectedDayFreeIntervals;
+    const freeIntervals = getFreeIntervalsFromBusyOnlyForDate(selectedDayIso);
     const generated: TimeInterval[] = [];
 
     for (const freeInterval of freeIntervals) {
@@ -882,7 +1083,37 @@ export default function CreateBookingModal({
           dateFrom: dateFromIso,
           dateTo: dateToIso,
         });
-        if (!canceled) setBusySlots(slots);
+
+        const normalizedSlots: BusySlot[] = [];
+        const seenSlotKeys = new Set<string>();
+
+        for (const slot of slots) {
+          const normalizedDate = slot.date.length >= 10 ? slot.date.slice(0, 10) : slot.date;
+          const normalizedTimeStart = slot.timeStart.length >= 5 ? slot.timeStart.slice(0, 5) : slot.timeStart;
+          const normalizedTimeEnd = slot.timeEnd.length >= 5 ? slot.timeEnd.slice(0, 5) : slot.timeEnd;
+
+          const startMinutes = parseTimeToMinutes(normalizedTimeStart);
+          const endMinutes = parseTimeToMinutes(normalizedTimeEnd);
+          if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) continue;
+          if (endMinutes <= startMinutes) continue;
+
+          const key = `${normalizedDate}|${normalizedTimeStart}|${normalizedTimeEnd}`;
+          if (seenSlotKeys.has(key)) continue;
+          seenSlotKeys.add(key);
+
+          normalizedSlots.push({
+            date: normalizedDate,
+            timeStart: normalizedTimeStart,
+            timeEnd: normalizedTimeEnd,
+          });
+        }
+
+        normalizedSlots.sort((firstSlot, secondSlot) => {
+          if (firstSlot.date !== secondSlot.date) return firstSlot.date.localeCompare(secondSlot.date);
+          return firstSlot.timeStart.localeCompare(secondSlot.timeStart);
+        });
+
+        if (!canceled) setBusySlots(normalizedSlots);
       } catch {
         if (!canceled) setBusyError('Nepavyko užkrauti užimtumo');
       } finally {
@@ -895,93 +1126,7 @@ export default function CreateBookingModal({
     return () => {
       canceled = true;
     };
-  }, [dateFromIso, dateToIso, formData.sitterProfileId]);
-
-  // Interval management
-  const addInterval = () => {
-    const durationMinutes = getDurationMinutesForServices(newVisitServices);
-    const defaultStart = defaultStartTimeForWindow;
-    const startMinutes = parseTimeToMinutes(defaultStart);
-    const nextEnd = Number.isFinite(startMinutes)
-      ? formatMinutesToTime(startMinutes + durationMinutes)
-      : '14:30';
-    setTimeIntervals((prev) => [
-      ...prev,
-      {
-        id: generateIntervalId(),
-        timeStart: defaultStart,
-        timeEnd: nextEnd,
-        services: { ...newVisitServices },
-        task: newVisitTaskTemplate.trim() || formatServicesLabel(newVisitServices),
-      },
-    ]);
-    setIsPriceManuallyEdited(false);
-  };
-
-  const removeInterval = (intervalId: string) => {
-    if (timeIntervals.length <= 1) return;
-    setTimeIntervals((prev) => prev.filter((interval) => interval.id !== intervalId));
-    setIsPriceManuallyEdited(false);
-  };
-
-  const updateInterval = (intervalId: string, field: 'timeStart' | 'timeEnd', value: string) => {
-    setTimeIntervals((prev) =>
-      prev.map((interval) => {
-        if (interval.id !== intervalId) return interval;
-        if (field === 'timeEnd') {
-          return { ...interval, timeEnd: value };
-        }
-
-        const startMinutes = parseTimeToMinutes(value);
-        if (!Number.isFinite(startMinutes)) return { ...interval, timeStart: value };
-        const durationMinutes = getDurationMinutesForServices(interval.services);
-        return {
-          ...interval,
-          timeStart: value,
-          timeEnd: formatMinutesToTime(startMinutes + durationMinutes),
-        };
-      }),
-    );
-    setIsPriceManuallyEdited(false);
-  };
-
-  const toggleServiceForDefaultInterval = (
-    intervalId: string,
-    serviceKey: keyof TimeInterval['services'],
-  ) => {
-    setTimeIntervals((prev) =>
-      prev.map((interval) => {
-        if (interval.id !== intervalId) return interval;
-
-        const nextServices = {
-          ...interval.services,
-          [serviceKey]: !interval.services[serviceKey],
-        };
-        const startMinutes = parseTimeToMinutes(interval.timeStart);
-        if (!Number.isFinite(startMinutes)) {
-          return {
-            ...interval,
-            services: nextServices,
-          };
-        }
-
-        const durationMinutes = getDurationMinutesForServices(nextServices);
-        return {
-          ...interval,
-          services: nextServices,
-          timeEnd: formatMinutesToTime(startMinutes + durationMinutes),
-        };
-      }),
-    );
-    setIsPriceManuallyEdited(false);
-  };
-
-  const updateTaskForDefaultInterval = (intervalId: string, nextTask: string) => {
-    setTimeIntervals((prev) =>
-      prev.map((interval) => (interval.id === intervalId ? { ...interval, task: nextTask } : interval)),
-    );
-    setIsPriceManuallyEdited(false);
-  };
+  }, [dateFromIso, dateToIso, formData.sitterProfileId, parseTimeToMinutes]);
 
   // Submit handler
   const handleSubmit = async (submitEvent: React.FormEvent) => {
@@ -1113,14 +1258,13 @@ export default function CreateBookingModal({
     return true;
   }, [busyLoading, dateError, hasBusyConflict, intervalsError, step1IsValid]);
 
-  const sitterIsValid = Boolean(formData.sitterProfileId);
-  const petsAreValid = formData.petIds.length > 0;
   const addressIsValid = Boolean(formData.address.trim());
   const priceIsValid = Number.isFinite(formData.totalPrice) && formData.totalPrice > 0;
-  const step3IsValid = !isSubmitDisabled;
+  const step3IsValid = step2IsValid;
+  const step4IsValid = !isSubmitDisabled;
 
   const goToStep = useCallback(
-    (nextStep: 1 | 2 | 3) => {
+    (nextStep: 1 | 2 | 3 | 4) => {
       if (nextStep === 1) {
         setActiveStep(1);
         return;
@@ -1142,7 +1286,13 @@ export default function CreateBookingModal({
         toast.error('Patikrinkite datas/laikus — yra klaidų arba konfliktų.');
         return;
       }
-      setActiveStep(3);
+
+      if (nextStep === 3) {
+        setActiveStep(3);
+        return;
+      }
+
+      setActiveStep(4);
     },
     [step1IsValid, step2IsValid, toast],
   );
@@ -1152,7 +1302,7 @@ export default function CreateBookingModal({
       <div className="order-0 border border-rose-200 rounded-lg p-3 bg-white">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-semibold text-gray-900">Rezervacija</p>
-          <p className="text-xs text-gray-600">Žingsnis {activeStep} iš 3</p>
+          <p className="text-xs text-gray-600">Žingsnis {activeStep} iš 4</p>
         </div>
 
         <div className="mt-3 flex items-center gap-2">
@@ -1193,7 +1343,20 @@ export default function CreateBookingModal({
                   : 'bg-white border-rose-200 text-gray-700 hover:bg-gray-50'
             }`}
           >
-            3. Patvirtinimas
+            3. Vizito nustatymai
+          </button>
+          <button
+            type="button"
+            onClick={() => goToStep(4)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+              activeStep === 4
+                ? 'bg-purple-600 border-purple-600 text-white'
+                : step4IsValid
+                  ? 'bg-green-50 border-green-300 text-green-800 hover:bg-green-100'
+                  : 'bg-white border-rose-200 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            4. Patvirtinimas
           </button>
         </div>
       </div>
@@ -1244,732 +1407,245 @@ export default function CreateBookingModal({
                 </div>
               )}
 
-              <div className={`grid grid-cols-1 lg:grid-cols-2 gap-4 ${isPlanningEnabled ? '' : 'opacity-50'}`}>
-                <div>
-                  <p className="text-sm font-medium text-gray-800 mb-1">Kalendorius</p>
-                  <p className="text-xs text-gray-600 mb-2">Pasirinkta: {daysCount} d.</p>
-                  <details className="mb-3">
-                    <summary className="cursor-pointer select-none text-xs font-semibold text-gray-600">
-                      Spalvų paaiškinimas
-                    </summary>
-                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-600">
-                      <span className="inline-flex items-center gap-1">
-                        <span className="w-3 h-3 rounded-full bg-green-100 border border-green-300" />
-                        Laisva
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <span className="w-3 h-3 rounded-full bg-orange-100 border border-orange-300" />
-                        Dalinai
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <span className="w-3 h-3 rounded-full bg-red-100 border border-red-300" />
-                        Užimta
-                      </span>
+              <div className="relative">
+                <div className={`grid grid-cols-1 lg:grid-cols-2 gap-4 ${isPlanningEnabled ? '' : 'opacity-40 pointer-events-none'}`}>
+                  <div>
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">Kalendorius</p>
+                        <p className="text-xs text-gray-600">Pasirinkta: {daysCount} d.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!isPlanningEnabled) return;
+                          setSelectedDates([]);
+                          setSelectedDayIso(null);
+                        }}
+                        disabled={!isPlanningEnabled || selectedDates.length === 0}
+                        className={`text-[11px] font-semibold px-2 py-1 rounded-md border ${
+                          !isPlanningEnabled || selectedDates.length === 0
+                            ? 'text-gray-400 border-gray-200 cursor-not-allowed'
+                            : 'text-gray-700 border-rose-200 hover:text-gray-900 hover:border-rose-300 bg-white'
+                        }`}
+                      >
+                        Išvalyti pasirinkimą
+                      </button>
                     </div>
-                  </details>
 
-                  <DayPicker
-                    mode="multiple"
-                    locale={lt}
-                    selected={selectedDates}
-                    onSelect={(dates) => {
-                      if (!isPlanningEnabled) return;
-                      setSelectedDates(dates ?? []);
-                      setIsPriceManuallyEdited(false);
-                      setSelectedDayIso(null);
-                    }}
-                    onDayClick={(day) => {
-                      if (!isPlanningEnabled) return;
-                      const dateIso = formatDateToIso(day);
-                      setSelectedDayIso(dateIso);
-                    }}
-                    disabled={isPlanningEnabled ? { before: new Date() } : undefined}
-                    modifiers={{
-                      free: (date) => availabilityByDate.get(formatDateToIso(date)) === 'free',
-                      partial: (date) => availabilityByDate.get(formatDateToIso(date)) === 'partial',
-                      full: (date) => availabilityByDate.get(formatDateToIso(date)) === 'full',
-                    }}
-                    modifiersClassNames={{
-                      free: 'bg-green-100 text-green-800',
-                      partial: 'bg-orange-100 text-orange-800',
-                      full: 'bg-red-100 text-red-800',
-                    }}
-                    classNames={{
-                      month_caption: 'capitalize',
-                      caption_label: 'capitalize',
-                    }}
-                    className="mx-auto"
-                  />
+                    <div className="mx-auto w-fit">
+                      <DayPicker
+                        mode="multiple"
+                        locale={lt}
+                        selected={selectedDates}
+                        onSelect={(dates) => {
+                          if (!isPlanningEnabled) return;
+                          setSelectedDates(dates ?? []);
+                          setIsPriceManuallyEdited(false);
+                          setSelectedDayIso(null);
+                        }}
+                        onDayClick={(day) => {
+                          if (!isPlanningEnabled) return;
+                          const dateIso = formatDateToIso(day);
+                          setSelectedDayIso(dateIso);
+                        }}
+                        disabled={isPlanningEnabled ? { before: new Date() } : undefined}
+                        modifiers={{
+                          free: (date) => availabilityByDate.get(formatDateToIso(date)) === 'free',
+                          partial: (date) => availabilityByDate.get(formatDateToIso(date)) === 'partial',
+                          full: (date) => availabilityByDate.get(formatDateToIso(date)) === 'full',
+                        }}
+                        modifiersClassNames={{
+                          free: 'bg-green-100 text-green-800',
+                          partial: 'bg-orange-100 text-orange-800',
+                          full: 'bg-red-100 text-red-800',
+                        }}
+                        classNames={{
+                          month_caption: 'capitalize',
+                          caption_label: 'capitalize',
+                        }}
+                      />
+                    </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedDates([])}
-                      className="text-xs font-semibold text-gray-700 hover:text-gray-900"
-                    >
-                      Išvalyti pasirinkimą
-                    </button>
-                    <button
-                      type="button"
-                      onClick={openAdvancedSettings}
-                      className="text-xs font-semibold text-purple-700 hover:text-purple-800"
-                    >
-                      Bendras vizito laikas visoms dienoms
-                    </button>
+                    <div className="mt-3">
+                      <p className="text-xs font-semibold text-gray-600 mb-1">Spalvų paaiškinimas</p>
+                      <div className="flex items-center gap-3 text-xs text-gray-600">
+                        <span className="inline-flex items-center gap-1">
+                          <span className="w-3 h-3 rounded-full bg-green-100 border border-green-300" />
+                          Laisva
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="w-3 h-3 rounded-full bg-orange-100 border border-orange-300" />
+                          Dalinai
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="w-3 h-3 rounded-full bg-red-100 border border-red-300" />
+                          Užimta
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <p className="text-sm font-medium text-gray-800 mb-2">Pasirinktos dienos</p>
-                  {daySummaries.length > 0 ? (
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                      {daySummaries.map((dayInfo) => {
-                        const statusClasses =
-                          dayInfo.status === 'full'
-                            ? 'bg-red-50 border-red-200 text-red-800'
-                            : dayInfo.status === 'partial'
-                              ? 'bg-orange-50 border-orange-200 text-orange-800'
-                              : 'bg-green-50 border-green-200 text-green-800';
-                        const isSelected = dayInfo.dateIso === selectedDayIso;
-                        const selectedRingClasses =
-                          isSelected && dayInfo.status === 'free'
-                            ? 'ring-2 ring-green-300'
-                            : '';
+                  <div>
+                    {!selectedDayIso && (
+                      <div className="border border-dashed border-rose-300 rounded-lg p-4 text-center text-xs text-gray-600 bg-rose-50/30">
+                        <p className="font-semibold text-gray-800 mb-1">Pasirinkite dieną kalendoriuje</p>
+                        <p>Matysite tos dienos laisvus laikus ir galėsite sudėlioti vizitus.</p>
+                      </div>
+                    )}
 
-                        return (
-                          <button
-                            key={dayInfo.dateIso}
-                            type="button"
-                            disabled={!isPlanningEnabled}
-                            onClick={() => {
-                              if (!isPlanningEnabled) return;
-                              setSelectedDayIso(dayInfo.dateIso);
-                            }}
-                            className={`shrink-0 min-w-[150px] border rounded-lg p-2 text-left transition ${statusClasses} ${
-                              selectedRingClasses ? selectedRingClasses : 'hover:opacity-90'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-sm font-semibold">{formatDateIsoToDisplay(dayInfo.dateIso)}</p>
-                              <span className="text-[11px] font-semibold">
-                                {dayInfo.status === 'full'
-                                  ? 'Užimta'
-                                  : dayInfo.status === 'partial'
-                                    ? 'Dalinai'
-                                    : 'Laisva'}
-                              </span>
-                            </div>
-                            <p className="text-[11px] mt-1 text-current/80">
-                              {dayInfo.hasOverride ? 'Turi atskirus laikus' : 'Naudoja bendrus laikus'}
+                    {isPlanningEnabled && selectedDayIso && selectedDayIntervals && (
+                      <div className="mt-4 border-t border-rose-200 pt-4 space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold text-gray-700">Vizitai šiai dienai</p>
+                            <p className="text-[11px] text-gray-500">
+                              {selectedDayIntervals.length} viz. · rekomenduojama trukmė {getDurationMinutesForServices(newVisitServices)} min.
                             </p>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-gray-500">Pasirinkite bent vieną dieną kalendoriuje.</p>
-                  )}
-
-                  {isPlanningEnabled && selectedDayIso && selectedDayIntervals && (
-                    <div className="mt-4 border-t border-rose-200 pt-4">
-                      <div className="flex items-center justify-between gap-3 mb-2">
-                        <p className="text-sm font-semibold text-gray-900">Laikai dienai: {selectedDayIso}</p>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={resetSelectedDayOverride}
-                            className="text-xs font-semibold text-gray-700 hover:text-gray-900"
-                          >
-                            Naudoti bendrus laikus
-                          </button>
-                          <button
-                            type="button"
-                            onClick={addIntervalForSelectedDay}
-                            className="text-xs font-semibold text-purple-700 hover:text-purple-800"
-                          >
-                            + Pridėti intervalą
-                          </button>
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="flex items-center justify-between gap-3 mb-3">
-                        <p className="text-xs font-semibold text-gray-700">Vizitų skaičius šiai dienai:</p>
-                        <div className="flex items-center gap-2">
-                          {[1, 2, 3].map((count) => (
-                            <button
-                              key={count}
-                              type="button"
-                              onClick={() => setVisitsCountForSelectedDay(count)}
-                              className="text-[11px] px-2 py-1 rounded border border-purple-200 bg-purple-50 text-purple-800 hover:bg-purple-100 transition"
-                            >
-                              {count}
-                            </button>
-                          ))}
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-semibold text-gray-700">Kiek vizitų šią dieną?</p>
+                          <div className="flex items-center gap-2">
+                            {[1, 2, 3].map((count) => (
+                              <button
+                                key={count}
+                                type="button"
+                                onClick={() => setVisitsCountForSelectedDay(count)}
+                                className="text-[11px] px-2 py-1 rounded border border-purple-200 bg-purple-50 text-purple-800 hover:bg-purple-100 transition"
+                              >
+                                {count}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
 
-                      <details className="mb-3 border border-rose-200 rounded-lg p-2 bg-gray-50" open={hasBusyConflict}>
-                        <summary className="cursor-pointer select-none text-xs font-semibold text-gray-700">
-                          Užimtumas ir laisvi laikai
-                        </summary>
-
-                        <div className="mt-3">
-                          <p className="text-xs font-semibold text-gray-700 mb-1">Užimti laikai šiai dienai:</p>
-                          {selectedDayBusySlots.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
-                              {selectedDayBusySlots.map((slot, slotIndex) => (
-                                <span
-                                  key={`${slot.date}-${slot.timeStart}-${slotIndex}`}
-                                  className="text-[11px] px-2 py-1 rounded bg-red-100 border border-red-200 text-red-800"
-                                >
-                                  {slot.timeStart}–{slot.timeEnd}
-                                </span>
-                              ))}
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          <div className="border border-green-200 rounded-lg p-3 bg-green-50/60">
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <p className="text-xs font-semibold text-gray-800">Automatinė rekomendacija</p>
+                              {selectedDayConflictingVisitId ? (
+                                <span className="text-[11px] font-semibold text-red-700">Yra konfliktas</span>
+                              ) : (
+                                <span className="text-[11px] font-semibold text-green-700">Visi vizitai telpa</span>
+                              )}
                             </div>
-                          ) : (
-                            <p className="text-xs text-gray-600">Šiai dienai užimtų laikų nėra.</p>
-                          )}
 
-                          {selectedDayFreeIntervals.length > 0 && (
-                            <div className="mt-3">
-                              <p className="text-xs font-semibold text-gray-700 mb-1">Laisvi laikai (greitas pridėjimas):</p>
-                              <div className="flex flex-wrap gap-2">
-                                {selectedDayFreeIntervals
-                                  .filter((freeInterval) => freeInterval.endMinutes - freeInterval.startMinutes >= 30)
-                                  .slice(0, 10)
+                            {selectedDayFreeIntervals.length === 0 ? (
+                              <p className="text-xs text-gray-600">Šiai dienai laisvų langų nebėra.</p>
+                            ) : suggestedNextFreeVisitStartMinutes !== null ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => applyFreeTimeForSelectedDay(suggestedNextFreeVisitStartMinutes)}
+                                  className="text-[11px] px-2 py-1 rounded bg-green-600 text-white hover:bg-green-700 transition"
+                                >
+                                  {selectedDayConflictingVisitId
+                                    ? `Pataisyti laiką (${formatMinutesToTime(suggestedNextFreeVisitStartMinutes)})`
+                                    : `Pridėti artimiausią (${formatMinutesToTime(suggestedNextFreeVisitStartMinutes)})`}
+                                </button>
+                                <span className="text-[11px] text-gray-600">
+                                  Trukmė: {getDurationMinutesForServices(newVisitServices)} min.
+                                </span>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-gray-600">Šiai dienai laisvų langų nebėra.</p>
+                            )}
+                          </div>
+
+                          <div className="border border-rose-200 rounded-lg p-3 bg-white">
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <p className="text-xs font-semibold text-gray-800">
+                                Visi laisvi intervalai ({selectedDayFreeIntervals.length})
+                              </p>
+                              {selectedDayFreeIntervals.length > 8 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setShowAllFreeTimeOptions((prev) => !prev)}
+                                  className="text-[11px] font-semibold text-purple-700 hover:text-purple-800"
+                                >
+                                  {showAllFreeTimeOptions ? 'Rodyti mažiau' : 'Rodyti visą sąrašą'}
+                                </button>
+                              )}
+                            </div>
+
+                            {selectedDayFreeIntervals.length === 0 ? (
+                              <p className="text-xs text-gray-600">Laisvų langų nėra – pabandykite kitą dieną.</p>
+                            ) : (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {(showAllFreeTimeOptions ? selectedDayFreeIntervals : selectedDayFreeIntervals.slice(0, 8))
+                                  .filter((freeInterval) => freeInterval.endMinutes - freeInterval.startMinutes >= getDurationMinutesForServices(newVisitServices))
                                   .map((freeInterval) => (
                                     <button
                                       key={`${freeInterval.start}-${freeInterval.end}`}
                                       type="button"
-                                      onClick={() =>
-                                        addVisitFromFreeIntervalForSelectedDay(
-                                          freeInterval.startMinutes,
-                                          freeInterval.endMinutes,
-                                        )
-                                      }
-                                      className="text-[11px] px-2 py-1 rounded bg-green-100 border border-green-200 text-green-900 hover:bg-green-200 transition"
+                                      onClick={() => applyFreeTimeForSelectedDay(freeInterval.startMinutes + TRAVEL_BUFFER_MINUTES)}
+                                      className="text-[11px] px-2 py-1 rounded border border-rose-200 text-gray-800 hover:bg-gray-50 transition"
                                     >
-                                      {freeInterval.start}–{freeInterval.end}
+                                      {formatMinutesToTime(freeInterval.startMinutes + TRAVEL_BUFFER_MINUTES)}–{formatMinutesToTime(
+                                        freeInterval.endMinutes - TRAVEL_BUFFER_MINUTES,
+                                      )}
                                     </button>
                                   ))}
                               </div>
-                              <p className="text-[11px] text-gray-500 mt-1">Paspaudus pridedamas {getDurationMinutesForServices(newVisitServices)} min vizitas.</p>
-                            </div>
-                          )}
-                        </div>
-                      </details>
-
-                      <details className="mb-3 border border-rose-200 rounded-lg p-2 bg-gray-50">
-                        <summary className="cursor-pointer select-none text-xs font-semibold text-gray-700">
-                          Vizito nustatymai
-                        </summary>
-
-                        <div className="mt-3">
-                          <div className="mb-3">
-                            <p className="text-xs font-semibold text-gray-700 mb-1">Laiko intervalas</p>
-                            <div className="flex flex-wrap gap-2">
-                              {[
-                                { key: 'morning' as const, label: 'Rytas' },
-                                { key: 'day' as const, label: 'Diena' },
-                                { key: 'evening' as const, label: 'Vakaras' },
-                                { key: 'custom' as const, label: 'Kita' },
-                              ].map((timeWindowOption) => {
-                                const isActive = visitTimeWindow === timeWindowOption.key;
-                                return (
-                                  <button
-                                    key={timeWindowOption.key}
-                                    type="button"
-                                    onClick={() => setVisitTimeWindow(timeWindowOption.key)}
-                                    className={`text-[11px] px-2 py-1 rounded border transition ${
-                                      isActive
-                                        ? 'bg-purple-600 border-purple-600 text-white'
-                                        : 'bg-white border-rose-200 text-gray-800 hover:bg-gray-50'
-                                    }`}
-                                  >
-                                    {timeWindowOption.label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          <div className="mb-3">
-                            <p className="text-xs font-semibold text-gray-700 mb-1">Vizito tipas (lemia trukmę)</p>
-
-                            <div className="flex flex-wrap gap-2">
-                              {VISIT_PRESETS.map((presetItem) => {
-                                const isActive = activeNewVisitPresetKey === presetItem.key;
-                                return (
-                                  <button
-                                    key={presetItem.key}
-                                    type="button"
-                                    onClick={() => setNewVisitPreset(presetItem.key)}
-                                    className={`text-[11px] px-2 py-1 rounded border transition ${
-                                      isActive
-                                        ? 'bg-purple-600 border-purple-600 text-white'
-                                        : 'bg-white border-rose-200 text-gray-800 hover:bg-gray-50'
-                                    }`}
-                                  >
-                                    {presetItem.label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-
-                            <div className="mt-2 flex items-center justify-between gap-3">
-                              <p className="text-[11px] text-gray-500">
-                                Paslaugos: {formatServicesLabel(newVisitServices)} · Trukmė: {getDurationMinutesForServices(newVisitServices)} min.
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => setIsNewVisitServicesAdvancedOpen((prev) => !prev)}
-                                className="text-[11px] font-semibold text-purple-700 hover:text-purple-800"
-                              >
-                                Keisti paslaugas
-                              </button>
-                            </div>
-
-                            {isNewVisitServicesAdvancedOpen && (
-                              <div className="mt-2 flex flex-wrap gap-3">
-                                <label className="flex items-center gap-2 text-xs text-gray-700">
-                                  <input
-                                    type="checkbox"
-                                    checked={newVisitServices.feeding}
-                                    onChange={() => toggleNewVisitService('feeding')}
-                                    className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
-                                  />
-                                  Pamaitinti
-                                </label>
-                                <label className="flex items-center gap-2 text-xs text-gray-700">
-                                  <input
-                                    type="checkbox"
-                                    checked={newVisitServices.litter}
-                                    onChange={() => toggleNewVisitService('litter')}
-                                    className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
-                                  />
-                                  Kraikas
-                                </label>
-                                <label className="flex items-center gap-2 text-xs text-gray-700">
-                                  <input
-                                    type="checkbox"
-                                    checked={newVisitServices.walking}
-                                    onChange={() => toggleNewVisitService('walking')}
-                                    className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
-                                  />
-                                  Pavedžioti
-                                </label>
-                              </div>
-                            )}
-
-                            <div className="mt-2">
-                              <label className="block text-[11px] font-semibold text-gray-700 mb-1">Ką reikės padaryti (šablonas naujiems vizitams)</label>
-                              <input
-                                type="text"
-                                value={newVisitTaskTemplate}
-                                onChange={(changeEvent) => setNewVisitTaskTemplate(changeEvent.target.value)}
-                                placeholder="Pvz: Pamaitinti + kraikas, duoti vandens"
-                                className="w-full px-3 py-2 border border-rose-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
-                              />
-
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {['Pamaitinti', 'Kraikas', 'Pavedžioti', 'Vanduo'].map((taskTag) => (
-                                  <button
-                                    key={taskTag}
-                                    type="button"
-                                    onClick={() => {
-                                      setNewVisitTaskTemplate((prev) => {
-                                        const trimmed = prev.trim();
-                                        const nextValue = trimmed ? `${trimmed}, ${taskTag}` : taskTag;
-                                        return nextValue;
-                                      });
-                                    }}
-                                    className="text-[11px] px-2 py-1 rounded bg-gray-50 border border-rose-200 text-gray-800 hover:bg-gray-100 transition"
-                                  >
-                                    {taskTag}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </details>
-
-                    <div className="space-y-2">
-                      {selectedDayIntervals.map((interval) => (
-                        <div key={interval.id} className="rounded-lg border border-rose-200 p-2 bg-white">
-                          <div className="flex items-center gap-2">
-                          <input
-                            type="time"
-                            value={interval.timeStart}
-                            onChange={(changeEvent) =>
-                              updateIntervalForSelectedDay(interval.id, 'timeStart', changeEvent.target.value)
-                            }
-                            className="flex-1 px-3 py-2 border border-rose-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 text-sm"
-                          />
-                          <span className="text-gray-400">–</span>
-                          <input
-                            type="time"
-                            value={interval.timeEnd}
-                            disabled
-                            className="flex-1 px-3 py-2 border border-rose-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 text-sm"
-                          />
-                          {selectedDayIntervals.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeIntervalForSelectedDay(interval.id)}
-                              className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
-                              title="Pašalinti intervalą"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          )}
-                          </div>
-
-                          <div className="mt-2 flex items-center justify-between gap-3">
-                            <p className="text-[11px] text-gray-500">
-                              {formatServicesLabel(interval.services)} · Trukmė: {getDurationMinutesForServices(interval.services)} min.
-                            </p>
-                          </div>
-
-                          <details
-                            className="mt-2"
-                            open={Boolean(selectedDayIntervalServicesOpenById[interval.id])}
-                            onToggle={(toggleEvent) => {
-                              const detailsElement = toggleEvent.currentTarget;
-                              setSelectedDayIntervalServicesOpenById((prev) => ({
-                                ...prev,
-                                [interval.id]: detailsElement.open,
-                              }));
-                            }}
-                          >
-                            <summary className="cursor-pointer select-none text-[11px] font-semibold text-gray-600">
-                              Papildomai (paslaugos / užduotis)
-                            </summary>
-                            <div className="mt-2 flex flex-wrap gap-3">
-                              <label className="flex items-center gap-2 text-[11px] text-gray-700">
-                                <input
-                                  type="checkbox"
-                                  checked={interval.services.feeding}
-                                  onChange={() => toggleServiceForSelectedDayInterval(interval.id, 'feeding')}
-                                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
-                                />
-                                Pamaitinti
-                              </label>
-                              <label className="flex items-center gap-2 text-[11px] text-gray-700">
-                                <input
-                                  type="checkbox"
-                                  checked={interval.services.litter}
-                                  onChange={() => toggleServiceForSelectedDayInterval(interval.id, 'litter')}
-                                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
-                                />
-                                Kraikas
-                              </label>
-                              <label className="flex items-center gap-2 text-[11px] text-gray-700">
-                                <input
-                                  type="checkbox"
-                                  checked={interval.services.walking}
-                                  onChange={() => toggleServiceForSelectedDayInterval(interval.id, 'walking')}
-                                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
-                                />
-                                Pavedžioti
-                              </label>
-                            </div>
-
-                            <div className="mt-2">
-                              <label className="block text-[11px] font-semibold text-gray-700 mb-1">Ką reikės padaryti</label>
-                              <input
-                                type="text"
-                                value={interval.task}
-                                onChange={(changeEvent) => updateTaskForSelectedDayInterval(interval.id, changeEvent.target.value)}
-                                placeholder="Pvz: pamaitinti, pakeisti kraiką, pavedžioti 30 min"
-                                className="w-full px-3 py-2 border border-rose-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
-                              />
-                            </div>
-                          </details>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                </div>
-              </div>
-
-              {/* Busy/Error messages */}
-              <div className="mt-4 space-y-3">
-                {busyError && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                    <p className="text-sm text-red-800">{busyError}</p>
-                  </div>
-                )}
-
-                {busyLoading && formData.sitterProfileId && !dateError && (
-                  <div className="bg-gray-50 border border-rose-200 rounded-lg p-3">
-                    <p className="text-sm text-gray-700">Tikrinamas užimtumas...</p>
-                  </div>
-                )}
-
-                {hasBusyConflict && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                    <p className="text-sm font-semibold text-red-800 mb-2">Yra laiko konfliktų</p>
-                    <div className="space-y-1">
-                      {busyConflicts.slice(0, 3).map((slot, slotIndex) => (
-                        <p key={`${slot.date}-${slot.timeStart}-${slotIndex}`} className="text-sm text-red-800">
-                          {slot.date}: {slot.timeStart}–{slot.timeEnd}
-                        </p>
-                      ))}
-                      {busyConflicts.length > 3 && (
-                        <p className="text-sm text-red-700">Ir dar {busyConflicts.length - 3}...</p>
-                      )}
-                    </div>
-                    <p className="text-xs text-red-800 mt-2">Pakoreguokite vizitų laikus, kad nepersidengtų su užimtais intervalais.</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Time Intervals */}
-              <div ref={timeIntervalsSectionRef} className="mt-4">
-                <details
-                  className="border border-rose-200 rounded-lg p-3 bg-white"
-                  open={isAdvancedSettingsOpen || Boolean(intervalsError)}
-                  onToggle={(toggleEvent) => {
-                    const detailsElement = toggleEvent.currentTarget;
-                    setIsAdvancedSettingsOpen(detailsElement.open);
-                  }}
-                >
-                  <summary className="cursor-pointer select-none text-sm font-medium text-gray-800">
-                    Bendri laikai visoms dienoms (išplėstiniai nustatymai)
-                  </summary>
-                  <div className="mt-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm font-medium text-gray-700">
-                        Bendri laikai (taikomi visoms dienoms) *
-                      </label>
-                      <button
-                        type="button"
-                        onClick={addInterval}
-                        className="text-xs font-semibold text-purple-700 hover:text-purple-800 transition"
-                      >
-                        + Pridėti intervalą
-                      </button>
-                    </div>
-
-                    <p className="text-xs text-gray-500 mb-2">
-                      Šie laikai taikomi visoms dienoms, kurios neturi atskirų laikų.
-                    </p>
-
-                    <div className="space-y-2">
-                      {timeIntervals.map((interval) => (
-                        <div key={interval.id} className="rounded-lg border border-rose-200 p-2 bg-white">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="time"
-                              value={interval.timeStart}
-                              onChange={(changeEvent) => updateInterval(interval.id, 'timeStart', changeEvent.target.value)}
-                              className="flex-1 px-3 py-2 border border-rose-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 text-sm"
-                            />
-                            <span className="text-gray-400">–</span>
-                            <input
-                              type="time"
-                              value={interval.timeEnd}
-                              disabled
-                              className="flex-1 px-3 py-2 border border-rose-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 text-sm"
-                            />
-                            {timeIntervals.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => removeInterval(interval.id)}
-                                className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
-                                title="Pašalinti intervalą"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
                             )}
                           </div>
-
-                          <div className="mt-2 flex items-center justify-between gap-3">
-                            <p className="text-[11px] text-gray-500">
-                              {formatServicesLabel(interval.services)} · Trukmė: {getDurationMinutesForServices(interval.services)} min.
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => toggleDefaultIntervalServices(interval.id)}
-                              className="text-[11px] font-semibold text-purple-700 hover:text-purple-800"
-                            >
-                              Keisti paslaugas
-                            </button>
-                          </div>
-
-                          {Boolean(defaultIntervalServicesOpenById[interval.id]) && (
-                            <div className="mt-2 flex flex-wrap gap-3">
-                              <label className="flex items-center gap-2 text-[11px] text-gray-700">
-                                <input
-                                  type="checkbox"
-                                  checked={interval.services.feeding}
-                                  onChange={() => toggleServiceForDefaultInterval(interval.id, 'feeding')}
-                                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
-                                />
-                                Pamaitinti
-                              </label>
-                              <label className="flex items-center gap-2 text-[11px] text-gray-700">
-                                <input
-                                  type="checkbox"
-                                  checked={interval.services.litter}
-                                  onChange={() => toggleServiceForDefaultInterval(interval.id, 'litter')}
-                                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
-                                />
-                                Kraikas
-                              </label>
-                              <label className="flex items-center gap-2 text-[11px] text-gray-700">
-                                <input
-                                  type="checkbox"
-                                  checked={interval.services.walking}
-                                  onChange={() => toggleServiceForDefaultInterval(interval.id, 'walking')}
-                                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
-                                />
-                                Pavedžioti
-                              </label>
-                            </div>
-                          )}
-
-                          <div className="mt-2">
-                            <label className="block text-[11px] font-semibold text-gray-700 mb-1">Ką reikės padaryti</label>
-                            <input
-                              type="text"
-                              value={interval.task}
-                              onChange={(changeEvent) => updateTaskForDefaultInterval(interval.id, changeEvent.target.value)}
-                              placeholder="Pvz: pamaitinti, pakeisti kraiką"
-                              className="w-full px-3 py-2 border border-rose-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
-                            />
-                          </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </details>
 
-                {intervalsError && <p className="text-xs text-red-600 mt-1">{intervalsError}</p>}
-              </div>
-            </div>
-
-            {/* Pets selection */}
-            <div
-              className={`${activeStep === 1 ? '' : 'hidden'} order-2 border ${petsAreValid ? 'border-green-200' : 'border-rose-200'} rounded-lg p-3 bg-white`}
-            >
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Augintiniai *
-              </label>
-              {pets.length > 0 && (
-                <p className="text-xs text-gray-500 mb-2">
-                  Pasirinkta: {formData.petIds.length}
-                </p>
-              )}
-              <div className="space-y-2">
-                {pets.length === 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-500">Neturite augintinių. Pirma pridėkite augintinį.</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        navigate('/pets');
-                      }}
-                      className="px-4 py-2 bg-linear-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition text-sm font-semibold"
-                    >
-                      + Pridėti augintinį
-                    </button>
-                  </div>
-                ) : (
-                  pets.map((pet) => {
-                    const checked = formData.petIds.includes(pet.id);
-                    return (
-                      <label key={pet.id} className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(changeEvent) => {
-                            const nextChecked = changeEvent.target.checked;
-                            setFormData((prev) => ({
-                              ...prev,
-                              petIds: nextChecked
-                                ? Array.from(new Set([...prev.petIds, pet.id]))
-                                : prev.petIds.filter((petId) => petId !== pet.id),
-                            }));
-                          }}
-                          className={`h-4 w-4 text-purple-600 rounded focus:ring-2 ${
-                            checked
-                              ? 'border-green-300 focus:ring-green-500'
-                              : 'border-rose-300 focus:ring-rose-500'
-                          }`}
-                        />
-                        <span>{pet.name}</span>
-                      </label>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* Sitter selection */}
-            <div
-              className={`${activeStep === 1 ? '' : 'hidden'} order-1 border ${sitterIsValid ? 'border-green-200' : 'border-rose-200'} rounded-lg p-3 bg-white`}
-            >
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Prižiūrėtojas *
-              </label>
-              {selectedSitter && !isSitterSelectorOpen ? (
-                <div className="border border-rose-200 rounded-lg p-3 bg-gray-50">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">
-                        {selectedSitter.user?.name || 'Prižiūrėtojas'}
-                      </p>
-                      <p className="text-xs text-gray-600">
-                        €{selectedSitter.hourlyRate}/val · {selectedSitter.city}
-                      </p>
-                    </div>
-                    {sitters.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setIsSitterSelectorOpen(true)}
-                        className="shrink-0 px-3 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 rounded-lg hover:bg-purple-100 transition"
-                      >
-                        Keisti
-                      </button>
+                        <div className="space-y-2">
+                          {selectedDayIntervals.map((interval) => {
+                            const intervalIsConflicting = selectedDayConflictingVisitId === interval.id;
+                            return (
+                              <div
+                                key={interval.id}
+                                className={`rounded-lg border p-2 ${
+                                  intervalIsConflicting ? 'border-red-300 bg-red-50' : 'border-rose-200 bg-white'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="time"
+                                    value={interval.timeStart}
+                                    onChange={(changeEvent) =>
+                                      updateIntervalForSelectedDay(interval.id, 'timeStart', changeEvent.target.value)
+                                    }
+                                    className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 text-sm ${
+                                      intervalIsConflicting
+                                        ? 'border-red-300 focus:ring-red-400 focus:border-red-400 bg-white'
+                                        : 'border-rose-300 focus:ring-rose-500 focus:border-rose-500'
+                                    }`}
+                                  />
+                                  <span className="text-gray-400">–</span>
+                                  <input
+                                    type="time"
+                                    value={interval.timeEnd}
+                                    onChange={(changeEvent) =>
+                                      updateIntervalForSelectedDay(interval.id, 'timeEnd', changeEvent.target.value)
+                                    }
+                                    className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 text-sm ${
+                                      intervalIsConflicting
+                                        ? 'border-red-300 focus:ring-red-400 focus:border-red-400 bg-white'
+                                        : 'border-rose-300 focus:ring-rose-500 focus:border-rose-500'
+                                    }`}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => removeIntervalForSelectedDay(interval.id)}
+                                    className={`text-[11px] font-semibold text-red-700 hover:text-red-800`}
+                                  >
+                                    Šalinti
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
-              ) : (
-                <select
-                  required
-                  value={formData.sitterProfileId}
-                  onChange={(changeEvent) => {
-                    setIsPriceManuallyEdited(false);
-                    setFormData((prev) => ({
-                      ...prev,
-                      sitterProfileId: changeEvent.target.value,
-                    }));
-                    if (changeEvent.target.value) {
-                      setIsSitterSelectorOpen(false);
-                    }
-                  }}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 ${
-                    sitterIsValid
-                      ? 'border-green-300 focus:ring-green-500 focus:border-green-500'
-                      : 'border-rose-300 focus:ring-rose-500 focus:border-rose-500'
-                  }`}
-                >
-                  <option value="">Pasirinkite prižiūrėtoją</option>
-                  {sitters.map((sitterProfile) => (
-                    <option key={sitterProfile.id} value={sitterProfile.id}>
-                      {sitterProfile.user?.name} - €{sitterProfile.hourlyRate}/val ({sitterProfile.city})
-                    </option>
-                  ))}
-                </select>
-              )}
+              </div>
             </div>
 
             {/* Address */}
@@ -1993,18 +1669,139 @@ export default function CreateBookingModal({
               />
             </div>
 
-      <div className={`${activeStep === 3 ? '' : 'hidden'} order-7 border border-rose-200 rounded-lg p-3 bg-white`}>
-        <p className="text-sm font-semibold text-gray-900 mb-2">Peržiūra</p>
-        <div className="text-sm text-gray-700">
-          <p>
-            {daysCount} dienos × €{pricePerVisit.toFixed(2)} = <span className="font-semibold">€{formData.totalPrice}</span>
-          </p>
-          <p className="text-xs text-gray-500 mt-1">Viso: {totalVisitsCount} vizitai · {totalHoursAcrossRange.toFixed(1)} val.</p>
+      <div className={`${activeStep === 3 ? '' : 'hidden'} order-8 border border-rose-200 rounded-lg p-3 bg-white`}>
+        <p className="text-sm font-semibold text-gray-900 mb-2">Vizito nustatymai</p>
+
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-gray-700 mb-1">Laiko intervalas</p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { key: 'morning' as const, label: 'Rytas' },
+              { key: 'day' as const, label: 'Diena' },
+              { key: 'evening' as const, label: 'Vakaras' },
+              { key: 'custom' as const, label: 'Kita' },
+            ].map((timeWindowOption) => {
+              const isActive = visitTimeWindow === timeWindowOption.key;
+              return (
+                <button
+                  key={timeWindowOption.key}
+                  type="button"
+                  onClick={() => setVisitTimeWindow(timeWindowOption.key)}
+                  className={`text-[11px] px-2 py-1 rounded border transition ${
+                    isActive
+                      ? 'bg-purple-600 border-purple-600 text-white'
+                      : 'bg-white border-rose-200 text-gray-800 hover:bg-gray-50'
+                  }`}
+                >
+                  {timeWindowOption.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-gray-700 mb-1">Vizito tipas (lemia trukmę)</p>
+
+          <div className="flex flex-wrap gap-2">
+            {VISIT_PRESETS.map((presetItem) => {
+              const isActive = activeNewVisitPresetKey === presetItem.key;
+              return (
+                <button
+                  key={presetItem.key}
+                  type="button"
+                  onClick={() => setNewVisitPreset(presetItem.key)}
+                  className={`text-[11px] px-2 py-1 rounded border transition ${
+                    isActive
+                      ? 'bg-purple-600 border-purple-600 text-white'
+                      : 'bg-white border-rose-200 text-gray-800 hover:bg-gray-50'
+                  }`}
+                >
+                  {presetItem.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <p className="text-[11px] text-gray-500">
+              Paslaugos: {formatServicesLabel(newVisitServices)} · Trukmė: {getDurationMinutesForServices(newVisitServices)} min.
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsNewVisitServicesAdvancedOpen((prev) => !prev)}
+              className="text-[11px] font-semibold text-purple-700 hover:text-purple-800"
+            >
+              Keisti paslaugas
+            </button>
+          </div>
+
+          {isNewVisitServicesAdvancedOpen && (
+            <div className="mt-2 flex flex-wrap gap-3">
+              <label className="flex items-center gap-2 text-xs text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={newVisitServices.feeding}
+                  onChange={() => toggleNewVisitService('feeding')}
+                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
+                />
+                Pamaitinti
+              </label>
+              <label className="flex items-center gap-2 text-xs text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={newVisitServices.litter}
+                  onChange={() => toggleNewVisitService('litter')}
+                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
+                />
+                Kraikas
+              </label>
+              <label className="flex items-center gap-2 text-xs text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={newVisitServices.walking}
+                  onChange={() => toggleNewVisitService('walking')}
+                  className="h-4 w-4 text-purple-600 border-rose-300 rounded focus:ring-rose-500"
+                />
+                Pavedžioti
+              </label>
+            </div>
+          )}
+
+          <div className="mt-2">
+            <label className="block text-[11px] font-semibold text-gray-700 mb-1">Ką reikės padaryti (šablonas naujiems vizitams)</label>
+            <input
+              type="text"
+              value={newVisitTaskTemplate}
+              onChange={(changeEvent) => setNewVisitTaskTemplate(changeEvent.target.value)}
+              placeholder="Pvz: Pamaitinti + kraikas, duoti vandens"
+              className="w-full px-3 py-2 border border-rose-300 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+            />
+
+            <div className="mt-2 flex flex-wrap gap-2">
+              {['Pamaitinti', 'Kraikas', 'Pavedžioti', 'Vanduo'].map((taskTag) => (
+                <button
+                  key={taskTag}
+                  type="button"
+                  onClick={() => {
+                    setNewVisitTaskTemplate((prev) => {
+                      const trimmed = prev.trim();
+                      const nextValue = trimmed ? `${trimmed}, ${taskTag}` : taskTag;
+                      return nextValue;
+                    });
+                  }}
+                  className="text-[11px] px-2 py-1 rounded bg-gray-50 border border-rose-200 text-gray-800 hover:bg-gray-100 transition"
+                >
+                  {taskTag}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
       <div
-        className={`${activeStep === 3 ? '' : 'hidden'} order-8 border ${priceIsValid ? 'border-green-200' : 'border-rose-200'} rounded-lg p-3 bg-white`}
+        className={`${activeStep === 4 ? '' : 'hidden'} order-9 border ${priceIsValid ? 'border-green-200' : 'border-rose-200'} rounded-lg p-3 bg-white`}
       >
         <label className="block text-sm font-medium text-gray-700 mb-1">Bendra kaina (€) *</label>
         {suggestedTotalPrice !== null && (
@@ -2087,7 +1884,7 @@ export default function CreateBookingModal({
 
             {/* Buttons */}
             <div className="flex flex-col gap-3 pt-2">
-              {activeStep === 3 && isSubmitDisabled && (
+              {activeStep === 4 && isSubmitDisabled && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                   <p className="text-sm text-red-800">{submitDisabledReason}</p>
                 </div>
@@ -2096,17 +1893,23 @@ export default function CreateBookingModal({
               {activeStep > 1 && (
                 <button
                   type="button"
-                  onClick={() => setActiveStep((prev) => (prev === 3 ? 2 : 1))}
+                  onClick={() =>
+                    setActiveStep((prev) => {
+                      if (prev === 4) return 3;
+                      if (prev === 3) return 2;
+                      return 1;
+                    })
+                  }
                   className="w-full px-4 py-2 border border-rose-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
                 >
                   Atgal
                 </button>
               )}
 
-              {activeStep < 3 && (
+              {activeStep < 4 && (
                 <button
                   type="button"
-                  onClick={() => goToStep((activeStep + 1) as 2 | 3)}
+                  onClick={() => goToStep((activeStep + 1) as 2 | 3 | 4)}
                   className="w-full px-4 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition"
                 >
                   Toliau
@@ -2125,7 +1928,7 @@ export default function CreateBookingModal({
 
               <button
                 type="submit"
-                disabled={activeStep !== 3 || isSubmitDisabled}
+                disabled={activeStep !== 4 || isSubmitDisabled}
                 className="w-full px-4 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 disabled:bg-purple-400 disabled:cursor-not-allowed transition"
               >
                 {loading ? 'Pateikiama...' : 'Pateikti rezervaciją'}

@@ -171,7 +171,7 @@ function SitterCard({ sitter }: { sitter: SitterProfile }) {
             onClick={(clickEvent) => {
               clickEvent.preventDefault();
               clickEvent.stopPropagation();
-              navigate(`/bookings?sitterProfileId=${sitter.id}`);
+              navigate(`/bookings/new?sitterProfileId=${encodeURIComponent(sitter.id)}`);
             }}
             className="w-full px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition font-semibold"
           >
